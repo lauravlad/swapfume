@@ -148,11 +148,36 @@ To check the DNS addresses yourself, GitHub's help page "Managing a custom domai
 
 I tested these rules on a local copy of Postgres (the same database Supabase uses), going through the full swap, the permission checks, duplicate catalog requests and bans. For 005 and 006, I also tested both a database that already had the old catalog and a fresh install. The result was the same catalog with no duplicates. A pre-2000 perfume someone had on their wishlist was kept rather than deleted. For 009 and the split `live-update/` files, I tested a fresh install (001–004 + live-update), the full migrations + seed, and an older database run through live-update twice: all three end with the same 2,758 perfumes, 114 classics, 362 with perfumers, and no duplicates; a pre-2000 perfume that someone had wishlisted was kept. Reviews: one per member, tags checked, Helpful counts can't be faked, admin hide and bans update the average, blocked/banned authors hidden, deleted member → "Former member". CSV import: preview and commit, duplicates within the file, existing perfumes, pre-2000 rows, missing brand, bad year, unknown family. For 008, I tested: under-18 sign-up refused, age confirmation, blocking in both directions (including admins), proposals refused and withdrawn, deletion refused during a swap in progress, and after deletion the swap and the review the member wrote kept with "Former member" while everything else was gone. The Edge Function itself can only run on Supabase, so it's untested until you deploy it. I have not yet run any of this on a real Supabase project.
 
+## iPhone app (App Store)
+
+The iPhone app is the same Swapfume, wrapped in a small native shell with **Capacitor** (folder `ios/`). It talks to the same Supabase database, so web and app members are the same community.
+
+Already set up: app name **Swapfume**, app ID **`com.octopupstudio.swapfume`**, iPhone only, portrait, the Swapfume icon and a launch screen, camera/photo permission texts (for bottle photos), and the "no special encryption" export answer. Email links (confirm sign-up, reset password) open the website, `PUBLIC_SITE_URL` in `js/config.js`.
+
+**What you need**
+1. About **40 GB free disk space**.
+2. **Xcode** from the Mac App Store (free), opened once so it installs its extras. Then in Terminal: `sudo xcode-select -s /Applications/Xcode.app` (asks for your Mac password).
+3. To publish: the **Apple Developer Program** ($99/year) at developer.apple.com, enrolled as yourself or as Octopup Studio (a company needs a D-U-N-S number, which takes longer).
+
+**Building**
+- After changing anything in `index.html`, `css/` or `js/`: `npm run ios:sync` (copies the site into the app).
+- `npm run ios:open` opens the project in Xcode. Pick an iPhone simulator and press ▶ to run it.
+- To publish: in Xcode, **Signing & Capabilities** → choose your team, then **Product → Archive → Distribute App → App Store Connect**.
+
+**App Store listing (App Store Connect)**
+- Create the app with bundle ID `com.octopupstudio.swapfume`.
+- **Age rating:** answer the questionnaire honestly (user-generated content, no gambling, etc.). The app itself is 18+, so state that in the description.
+- **Privacy** ("nutrition label"): email address, name, physical address (shipping), photos, user content; used for app functionality; linked to the user; no tracking. Privacy Policy URL: `https://swapfume.com/#/privacy`. Support URL: `https://swapfume.com/#/support`.
+- **Review notes:** give Apple a working test account (email + password, already 18+-confirmed, with an address and a couple of listings) and explain: no money, members swap by mail; report, block and delete account are under Me and on profiles.
+- Screenshots: 6.9" and 6.5" iPhone sizes (taken from the simulator).
+
+**Heads-up about App Review:** Apple sometimes rejects apps that are "just a website in an app" (guideline 4.2). Swapfume ships its screens inside the app (not a remote website) and has its own icon, launch screen and photo picker, which helps. If Apple asks for more, the usual next step is push notifications for new swap proposals.
+
 ## What is not in this first version
 
 - **No in-app chat.** People use the note attached to the proposal. Chat or email notifications would be a good next step. Right now nobody gets an email when they receive a proposal.
 - **Collections don't update after a swap.** The swap page reminds people to update their own collection afterwards.
-- **Not in the app stores yet.** It can be added to a phone's home screen. Putting it in the App Store and Google Play needs a wrapper app (for example Capacitor) plus developer accounts; that's a later step. Apple requires in-app account deletion and blocking/reporting for apps like this, which are now in place.
+- **Google Play app.** The iPhone project is set up (see above); an Android version can be added the same way with `npx cap add android` and Android Studio.
 - **No offline mode.** There is no service worker; the app needs a connection.
 - **No automatic sample-first rule.** "Samples before full bottles for new members" is shown as a tip, not enforced.
 - **Photos in demo mode** stay in your browser and take up its limited storage space. Use small photos there.
@@ -170,6 +195,8 @@ I tested these rules on a local copy of Postgres (the same database Supabase use
 | `js/api-demo.js` | Demo data layer (browser storage, pretend members) |
 | `js/api-supabase.js` | Real data layer (same functions, talks to Supabase) |
 | `js/catalog-seed.js`, `js/catalog/*.js` | The perfume catalog: the detailed lists (with families and notes) and the `more-*.js` name-only lists, plus `perfumers.js`. Edit them, then run `node tools/make-seed-sql.js`. It checks every row, skips duplicates, prints counts per category, and regenerates `supabase/seed.sql`, the data parts of migrations 005–009, and all of `supabase/live-update/` |
+| `ios/`, `capacitor.config.json`, `package.json` | The iPhone app (Capacitor). `npm run ios:sync` copies the site in, `npm run ios:open` opens Xcode |
+| `tools/build-www.js` | Copies the website files into `www/` for the app |
 | `supabase/live-update/` | Migrations 005–009 split into numbered files under 120 KB for the SQL Editor |
 | `supabase/` | Database tables, security rules, actions, storage, catalog |
 | `supabase/functions/delete-account/` | Edge Function that deletes a member's photos and login (deploy once, see above) |

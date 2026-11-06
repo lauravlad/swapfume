@@ -1,0 +1,23 @@
+{
+  "appId": "com.octopupstudio.swapfume",
+  "appName": "Swapfume",
+  "webDir": "www",
+  "backgroundColor": "#FAF6F1",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#FAF6F1",
+    "scheme": "Swapfume"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "launchAutoHide": true,
+      "backgroundColor": "#8C3B4A",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#FAF6F1"
+    }
+  }
+}

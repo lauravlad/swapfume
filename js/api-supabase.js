@@ -22,6 +22,9 @@
       return data;
     };
     const me = () => uid || fail("Please sign in first.");
+    // Where email links (confirm sign-up, reset password) should land: this page on the web,
+    // the public website when running inside the iPhone app.
+    const siteUrl = () => (window.Capacitor?.isNativePlatform?.() && window.APP_CONFIG.PUBLIC_SITE_URL) || location.origin + location.pathname;
     const LITE = "id,display_name,city,country,is_banned";
     const ITEM_SEL = `*, perfume:perfumes(*), owner:profiles(${LITE})`;
     const WISH_SEL = `*, perfume:perfumes(*), user:profiles(${LITE})`;
@@ -55,7 +58,7 @@
         if (String(password || "").length < 8) fail("Use at least 8 characters for your password.");
         const data = check(await sb.auth.signUp({
           email: String(email).trim(), password,
-          options: { data: { display_name: String(display_name || "").trim(), birthdate },  emailRedirectTo: location.origin + location.pathname }
+          options: { data: { display_name: String(display_name || "").trim(), birthdate },  emailRedirectTo: siteUrl() }
         }));
         return { needsConfirmation: !data.session };
       },
@@ -68,7 +71,7 @@
       async requestPasswordReset(email) {
         email = String(email || "").trim();
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail("Please enter a valid email address.");
-        check(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }));
+        check(await sb.auth.resetPasswordForEmail(email, { redirectTo: siteUrl() }));
         return { demoLink: false };
       },
       canResetPassword: () => !!uid,
