@@ -15,10 +15,7 @@ window.APP_CONFIG = {
   OPERATOR_NAME: "Octopup Studio",    // who runs the service (shown in Terms / Privacy)
   SUPPORT_EMAIL: "hello@swapfume.com",
   MIN_AGE: 18,
-  // Demo mode while the database is being set up. To go live with real accounts, delete the two
-  // empty lines below and remove the "//" in front of the two lines after them.
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: ""
-  // SUPABASE_URL: "https://lrnymsmajoriksbnoojn.supabase.co",
-  // SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxybnltc21ham9yaWtzYm5vb2puIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MTU3NzQsImV4cCI6MjEwOTQ5MTc3NH0.icMukRItbaORuRgWELldcAAS2RvIDn_jgcL4VP1uIwI"
+  // Live: connected to the Swapfume Supabase project. (Empty both values to go back to demo mode.)
+  SUPABASE_URL: "https://lrnymsmajoriksbnoojn.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxybnltc21ham9yaWtzYm5vb2puIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MTU3NzQsImV4cCI6MjEwOTQ5MTc3NH0.icMukRItbaORuRgWELldcAAS2RvIDn_jgcL4VP1uIwI"
 };
