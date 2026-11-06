@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Swapfume app icon: a cream perfume bottle inside two gold "swap" arcs, on deep rose. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9A4555"/>
+      <stop offset="1" stop-color="#7A3140"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" x2="1">
+      <stop offset="0" stop-color="#FFFDFB"/>
+      <stop offset="1" stop-color="#F1E6DA"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1">
+      <stop offset="0" stop-color="#E2C27E"/>
+      <stop offset="1" stop-color="#B98E3E"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- swap arcs with arrow heads -->
+  <g fill="none" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M118 214 A146 146 0 0 1 362 146"/>
+    <path d="M394 298 A146 146 0 0 1 150 366"/>
+  </g>
+  <g fill="url(#gold)">
+    <path d="M384 120 L392 184 L332 162 Z"/>
+    <path d="M128 392 L120 328 L180 350 Z"/>
+  </g>
+  <!-- bottle -->
+  <rect x="226" y="140" width="60" height="44" rx="8" fill="url(#gold)"/>
+  <rect x="240" y="184" width="32" height="20" fill="#B98E3E"/>
+  <rect x="186" y="202" width="140" height="160" rx="36" fill="url(#glass)"/>
+  <rect x="200" y="300" width="112" height="48" rx="22" fill="#E8C4C0" opacity=".85"/>
+  <rect x="204" y="222" width="14" height="110" rx="7" fill="#fff" opacity=".9"/>
+</svg>

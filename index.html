@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Swapfume — Swap the scents you love</title>
+  <meta name="description" content="A small, friendly community for swapping perfume samples, decants and bottles. No money involved.">
+  <meta name="theme-color" content="#FAF6F1">
+  <!-- Home-screen app: works when hosted at the site root (all paths are relative). -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Swapfume">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=9">
+</head>
+<body>
+  <a class="skip" href="#view">Skip to content</a>
+  <header class="topbar" id="topbar" hidden>
+    <a href="#/" class="wordmark" aria-label="Swapfume home">Swapfume</a>
+    <nav class="topnav" aria-label="Main">
+      <a href="#/" data-nav="home">Matches</a>
+      <a href="#/browse" data-nav="browse">Browse</a>
+      <a href="#/collection" data-nav="collection">Collection</a>
+      <a href="#/swaps" data-nav="swaps">Swaps<span class="dot" data-swapdot hidden></span></a>
+      <a href="#/me" data-nav="me">Me</a>
+    </nav>
+  </header>
+  <div class="demo-banner" id="demoBanner" hidden></div>
+  <main id="view" tabindex="-1"></main>
+  <footer class="site-footer">
+    <nav aria-label="Legal and help"><a href="#/support">Support</a><a href="#/terms">Terms of Use</a><a href="#/privacy">Privacy Policy</a></nav>
+    <p>Swapfume is run by Octopup Studio · No money, ever.</p>
+  </footer>
+  <nav class="tabbar" id="tabbar" aria-label="Main" hidden>
+    <a href="#/" data-nav="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span>Matches</span></a>
+    <a href="#/browse" data-nav="browse"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><span>Browse</span></a>
+    <a href="#/collection" data-nav="collection"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9.5" y="3" width="5" height="4" rx="1"/><rect x="6" y="8" width="12" height="13" rx="4"/></svg><span>Collection</span></a>
+    <a href="#/swaps" data-nav="swaps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg><span>Swaps</span><span class="dot" data-swapdot hidden></span></a>
+    <a href="#/me" data-nav="me"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg><span>Me</span></a>
+  </nav>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog id="modal"></dialog>
+
+  <script src="js/config.js?v=9"></script>
+  <script src="js/catalog-seed.js?v=9"></script>
+  <script src="js/catalog/classics.js?v=9"></script>
+  <script src="js/catalog/designer.js?v=9"></script>
+  <script src="js/catalog/niche.js?v=9"></script>
+  <script src="js/catalog/middle-eastern.js?v=9"></script>
+  <script src="js/catalog/asian.js?v=9"></script>
+  <script src="js/catalog/more-designer.js?v=9"></script>
+  <script src="js/catalog/more-niche.js?v=9"></script>
+  <script src="js/catalog/more-mass-me.js?v=9"></script>
+  <script src="js/catalog/perfumers.js?v=9"></script>
+  <script src="js/legal.js?v=10"></script>
+  <script src="js/util.js?v=9"></script>
+  <script src="js/api-demo.js?v=10"></script>
+  <script src="js/api-supabase.js?v=9"></script>
+  <script src="js/app.js?v=10"></script>
+</body>
+</html>
