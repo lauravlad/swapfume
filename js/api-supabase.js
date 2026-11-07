@@ -111,8 +111,8 @@
         check(await sb.from("private_addresses").upsert({ user_id: me(), full_name: String(full_name).trim(), address: String(address).trim(), updated_at: new Date().toISOString() }));
       },
       async getPartnerAddress(swapId) {
-        const s = check(await sb.from("swaps").select("proposer_id,recipient_id,status").eq("id", swapId).single());
-        if (!["accepted", "completed"].includes(s.status)) return null;
+        const s = check(await sb.from("swaps").select("proposer_id,recipient_id,status,method").eq("id", swapId).single());
+        if (!["accepted", "completed"].includes(s.status) || s.method === "meetup") return null;
         const other = s.proposer_id === uid ? s.recipient_id : s.proposer_id;
         if (!other) return null; // partner deleted their account
         return check(await sb.from("private_addresses").select("*").eq("user_id", other).maybeSingle());
@@ -171,8 +171,24 @@
       async addWish(perfumeId) { check(await sb.from("wishlist_items").insert({ user_id: me(), perfume_id: Number(perfumeId) })); },
       async removeWish(id) { check(await sb.from("wishlist_items").delete().eq("id", id)); },
 
-      async proposeSwap({ recipientId, myItemIds, theirItemIds, message }) {
-        return check(await sb.rpc("propose_swap", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_their_items: theirItemIds.map(Number), p_message: message || "" }));
+      async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail" }) {
+        return check(await sb.rpc("propose_swap", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_their_items: theirItemIds.map(Number), p_message: message || "", p_method: method }));
+      },
+      async setMeetPlan(id, plan) { check(await sb.rpc("set_meet_plan", { p_swap: Number(id), p_plan: plan || "" })); },
+      async markMet(id) { check(await sb.rpc("mark_met", { p_swap: Number(id) })); },
+
+      // Location: ZIP code is private; others only get rounded distances.
+      async getMyLocation() { if (!uid) return null; return check(await sb.from("private_locations").select("zip").eq("user_id", uid).maybeSingle()); },
+      async setMyLocation(zip) {
+        const z = await Util.zipLookup(zip);
+        check(await sb.rpc("set_my_location", { p_zip: z.zip, p_lat: z.lat, p_lon: z.lon }));
+      },
+      async clearMyLocation() { check(await sb.rpc("clear_my_location")); },
+      async memberDistances(userIds) {
+        const ids = [...new Set(userIds)].filter(Boolean);
+        if (!ids.length || !uid) return {};
+        const rows = check(await sb.rpc("member_distances", { p_user_ids: ids }));
+        const out = {}; rows.forEach((r) => { out[r.user_id] = r.miles; }); return out;
       },
       async listMySwaps() {
         me();

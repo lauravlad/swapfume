@@ -7,7 +7,7 @@
   const C = window.APP_CONFIG;
   const APP = C.APP_NAME, OP = C.OPERATOR_NAME, MAIL = C.SUPPORT_EMAIL, COUNTRY = C.LAUNCH_COUNTRY, AGE = C.MIN_AGE;
   const mail = `<a href="mailto:${MAIL}">${MAIL}</a>`;
-  const UPDATED = "November 5, 2026";
+  const UPDATED = "November 7, 2026";
 
   window.LEGAL = {
     privacy: {
@@ -22,7 +22,8 @@
   <li><b>Age check:</b> when you sign up you give your date of birth so we can confirm you are ${AGE} or older. We keep only the fact that you confirmed it and when — not your birthday.</li>
   <li><b>Your public profile:</b> display name, and if you add them, city, country and a short bio.</li>
   <li><b>Your shipping address:</b> the name and address you enter for packages.</li>
-  <li><b>What you list and write:</b> your collection, wishlist, photos you upload, swaps, swap reviews, perfume reviews and ratings, "Helpful" votes, catalog suggestions, reports and blocks.</li>
+  <li><b>Your ZIP code</b>, if you add it, and its approximate centre point (from the public US Census list), used only to work out roughly how far you are from other members.</li>
+  <li><b>What you list and write:</b> your collection, wishlist, profile photo and other photos you upload, swaps (including meet-up plans you write), swap reviews, perfume reviews and ratings, "Helpful" votes, catalog suggestions, reports and blocks.</li>
   <li><b>Basic technical data</b> our hosting providers record to keep the service running and secure (for example IP address and browser type in server logs).</li>
 </ul>
 <p>We do not collect payment details — ${APP} never involves money.</p>
@@ -30,7 +31,8 @@
 <h2>Who can see what</h2>
 <ul>
   <li><b>Other members</b> can see your public profile, what you mark as open to trade, your wishlist, your completed-swap count, reviews, and the perfume reviews you write (with your display name). Who voted "Helpful" is not shown.</li>
-  <li><b>Your address</b> is shown only to the other person in a swap, and only after you have <i>both</i> accepted it.</li>
+  <li><b>Your address</b> is shown only to the other person in a swap by mail, and only after you have <i>both</i> accepted it. It is never shared for swaps where you meet in person.</li>
+  <li><b>Your ZIP code</b> is never shown to anyone. Other members see only your city (if you add one) and a rounded distance such as "about 8 miles", and only up to 50 miles away. People you've blocked, or who blocked you, don't see it at all.</li>
   <li><b>Photos</b> you upload are stored at a public web address so they can be displayed; anyone with the link could view them. Don't include personal details in photos.</li>
   <li><b>Our admins</b> can see what's needed to moderate: listings, reports, swaps and member accounts.</li>
   <li>People you <b>block</b> can no longer see your listings or wishlist, and you can't see theirs.</li>
@@ -43,7 +45,7 @@
 <p>We use trusted providers to host the site and the database (for example Supabase for accounts, data and photo storage, and our web host for the pages). They process data only on our behalf. Fonts are loaded from Google Fonts, which sees your IP address when the page loads.</p>
 
 <h2>How long we keep it</h2>
-<p>As long as you have an account. When you delete your account we remove your profile, listings, wishlist, photos, address and blocks. Swaps you completed stay in your partners' history, and swap reviews and perfume reviews you wrote stay, shown as "Former member" with no link to you. Reviews about you are removed. Backups and logs may keep traces for a short time before they expire.</p>
+<p>As long as you have an account. You can remove your ZIP code any time under <b>Me</b>. When you delete your account we remove your profile, listings, wishlist, photos, address, ZIP code and blocks. Swaps you completed stay in your partners' history, and swap reviews and perfume reviews you wrote stay, shown as "Former member" with no link to you. Reviews about you are removed. Backups and logs may keep traces for a short time before they expire.</p>
 
 <h2>Your choices</h2>
 <ul>
@@ -84,6 +86,15 @@
   <li>Pack glass carefully and seal atomizers.</li>
   <li>Ship within the ${COUNTRY} only — no international shipping.</li>
   <li>Only swap what you own, is genuine, and is described honestly (size, how much is left, batch, condition). No fakes or "inspired by" copies passed off as the original.</li>
+</ul>
+
+<h2>Meeting in person</h2>
+<p>Members within 20 miles of each other may choose to meet instead of shipping. If you do:</p>
+<ul>
+  <li>Meet only in a busy public place, in daylight. Tell someone where you're going, or bring a friend.</li>
+  <li>Swap perfume only — no money, no other goods, no sales.</li>
+  <li>You don't have to go through with a meet-up. If anything feels wrong, leave and report it.</li>
+  <li>You meet other members at your own risk. ${OP} doesn't check members' identities, isn't present at meet-ups, and, to the extent the law allows, isn't responsible for what happens at them.</li>
 </ul>
 
 <h2>Be kind and keep it clean</h2>

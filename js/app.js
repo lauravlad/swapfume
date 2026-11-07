@@ -292,6 +292,21 @@
   }
 
   // ---------- Swap helpers ----------
+  // ---------- Distance & meet-ups ----------
+  const NEAR_MILES = 20; // same limit as the database (migration 011)
+  const PIN = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg>`);
+  // Rounded distance from the database: shown as "Nearby · about 5 mi" up to 20 miles, "about 35 mi" up to 50, nothing beyond.
+  function distanceBadge(miles) {
+    if (miles == null) return "";
+    return miles <= NEAR_MILES ? html`<span class="pill ok near">${PIN}Nearby · about ${miles} mi</span>` : html`<span class="pill grey">about ${miles} mi</span>`;
+  }
+  const SAFETY_TIPS = html`<ul class="tips">
+    <li>Meet in a <b>busy public place</b> in daylight — a café, a library lobby, a mall.</li>
+    <li><b>Tell a friend</b> where you're going and when; bring one along if you like.</li>
+    <li>Don't share your home address; you don't need it for a meet-up.</li>
+    <li>Check the bottles there and then. Swap only perfume — <b>no money, ever</b>.</li>
+    <li>If anything feels off, leave, and report it from the swap page.</li></ul>`;
+
   function swapInfo(s, myReviewed) {
     const uid = state.uid, iAmP = s.proposer_id === uid;
     const other = iAmP ? s.recipient : s.proposer;
@@ -303,6 +318,10 @@
     if (s.status === "proposed") { needsMe = !iAmP; label = iAmP ? `Waiting for ${n} to answer` : `${n} proposed a swap`; tone = needsMe ? "rose" : "gold"; }
     else if (s.status === "declined") { label = "Declined"; tone = "grey"; }
     else if (s.status === "cancelled") { label = "Withdrawn"; tone = "grey"; }
+    else if (s.status === "accepted" && s.method === "meetup") {
+      if (!my.received) { needsMe = true; label = s.meet_plan ? "Meet up, then confirm" : "Plan your meet-up"; tone = "rose"; }
+      else { label = `Waiting for ${n} to confirm you met`; tone = "gold"; }
+    }
     else if (s.status === "accepted") {
       if (!my.shipped) { needsMe = true; label = "Ship your package"; tone = "rose"; }
       else if (their.shipped && !my.received) { needsMe = true; label = "Confirm their package arrived"; tone = "rose"; }
@@ -487,12 +506,16 @@
     const perfect = all.filter((x) => x.has.length && x.wants.length).sort((a, b) => b.has.length + b.wants.length - a.has.length - a.wants.length);
     const hasOnly = all.filter((x) => x.has.length && !x.wants.length);
     const wantsOnly = all.filter((x) => !x.has.length && x.wants.length);
-    const stats = await api.getStats(all.map((x) => x.user.id));
+    const [stats, dist, myLoc] = await Promise.all([api.getStats(all.map((x) => x.user.id)), api.memberDistances(all.map((x) => x.user.id)).catch(() => ({})), api.getMyLocation().catch(() => null)]);
     const p = state.profile;
+    // Nearby people first within each group.
+    const near = (x) => (dist[x.user.id] != null && dist[x.user.id] <= NEAR_MILES ? 1 : 0);
+    [perfect, hasOnly, wantsOnly].forEach((list) => list.sort((a, b) => near(b) - near(a)));
 
     const steps = [
       [!!(p.city || p.country), "Add your city and a short bio", "#/me"],
       [!!address, "Add your shipping address (kept private)", "#/me"],
+      [!!myLoc, "Add your ZIP code to find swappers nearby (kept private)", "#/me"],
       [mine.length > 0, "Add a perfume you have", "#/collection"],
       [myWishes.length > 0, "Add a perfume you want", "#/collection?tab=want"]
     ];
@@ -501,8 +524,9 @@
     const matchCard = (x, kind) => {
       const myMatching = (perfId) => myTradeable.filter((i) => i.perfume_id === perfId);
       return html`<article class="card match">
-        <div class="match-head">${avatar(x.user)}<div class="grow"><a class="name" href="#/u/${x.user.id}">${x.user.display_name}</a><div class="row small muted">${place(x.user)} ${trust(stats[x.user.id])}</div></div>
+        <div class="match-head">${avatar(x.user)}<div class="grow"><a class="name" href="#/u/${x.user.id}">${x.user.display_name}</a><div class="row small muted">${place(x.user)} ${distanceBadge(dist[x.user.id])} ${trust(stats[x.user.id])}</div></div>
           ${kind === "perfect" ? html`<span class="pill rose">Two-way match</span>` : ""}</div>
+        ${near(x) ? html`<p class="small near-hint">${PIN} You're about ${dist[x.user.id]} mile${dist[x.user.id] === 1 ? "" : "s"} apart — you could meet up to swap instead of shipping.</p>` : ""}
         <div class="match-sides">
           ${x.has.length ? html`<div class="side"><h4>They have, you want</h4><ul>${x.has.map((i) => html`<li><b>${i.perfume.name}</b> <span class="muted">${i.perfume.brand} · ${SIZE_LABEL[i.size]}${i.volume_ml ? " " + +i.volume_ml + " ml" : ""}</span></li>`)}</ul></div>` : ""}
           ${x.wants.length ? html`<div class="side"><h4>They want, you have</h4><ul>${x.wants.map((w) => html`<li><b>${w.perfume.name}</b> <span class="muted">${w.perfume.brand} · your ${myMatching(w.perfume_id).map((i) => SIZE_LABEL[i.size].toLowerCase()).join(", ")}</span></li>`)}</ul></div>` : ""}
@@ -780,10 +804,12 @@
     const p = await api.getProfile(id);
     if (!p) return setView(html`<div class="empty"><h3>Member not found</h3></div>`);
     const isMe = id === state.uid;
-    const [items, wishes, reviews, stats, blocks] = await Promise.all([api.listItems({ ownerId: id }), api.listWishes({ userId: id }), api.listReviews({ revieweeId: id }), api.getStats([id]), isMe ? [] : api.listBlocks()]);
+    const [items, wishes, reviews, stats, blocks, dist] = await Promise.all([api.listItems({ ownerId: id }), api.listWishes({ userId: id }), api.listReviews({ revieweeId: id }), api.getStats([id]), isMe ? [] : api.listBlocks(), isMe ? {} : api.memberDistances([id]).catch(() => ({}))]);
     const iBlocked = blocks.some((b) => b.blocked_id === id);
     const shown = isMe ? items : items.filter((i) => i.tradeable);
-    setView(html`<div class="card"><div class="profile-head">${avatar(p, "lg")}<div><h1>${p.display_name}</h1><div class="muted">${place(p) || "Location not set"}</div><div style="margin-top:6px">${trust(stats[id])}</div></div></div>
+    const miles = dist[id];
+    setView(html`<div class="card"><div class="profile-head">${avatar(p, "lg")}<div><h1>${p.display_name}</h1><div class="muted row" style="gap:8px">${place(p) || "Location not set"} ${distanceBadge(miles)}</div><div style="margin-top:6px">${trust(stats[id])}</div></div></div>
+        ${!iBlocked && miles != null && miles <= NEAR_MILES ? html`<div class="notice ok" style="margin-top:12px">${PIN} You're about ${miles} mile${miles === 1 ? "" : "s"} apart. When you propose a swap you can choose <b>Meet in person</b> instead of shipping.</div>` : ""}
         ${p.is_banned ? html`<div class="notice rose" style="margin-top:12px">This account has been suspended.</div>` : ""}
         ${p.bio ? html`<p style="margin-top:14px">${p.bio}</p>` : ""}
         ${iBlocked ? html`<div class="notice" style="margin-top:12px">You blocked ${p.display_name}. You don't see each other's listings or wishlists, and neither of you can propose a swap. They aren't told.</div>` : ""}
@@ -808,31 +834,50 @@
 
   async function pagePropose(otherId) {
     if (otherId === state.uid) return go("/collection");
-    const [other, theirs, mine, myW, theirW, address, stats] = await Promise.all([
+    const [other, theirs, mine, myW, theirW, address, stats, dist, myLoc] = await Promise.all([
       api.getProfile(otherId), api.listItems({ ownerId: otherId, tradeableOnly: true }), api.listItems({ ownerId: state.uid }),
-      api.listWishes({ userId: state.uid }), api.listWishes({ userId: otherId }), api.getMyAddress(), api.getStats([otherId, state.uid])]);
+      api.listWishes({ userId: state.uid }), api.listWishes({ userId: otherId }), api.getMyAddress(), api.getStats([otherId, state.uid]),
+      api.memberDistances([otherId]).catch(() => ({})), api.getMyLocation().catch(() => null)]);
+    const miles = dist[otherId], canMeet = miles != null && miles <= NEAR_MILES;
     if (!other) return setView(html`<div class="empty"><h3>Member not found</h3></div>`);
     if ((await api.listBlocks()).some((b) => b.blocked_id === otherId)) return setView(html`<div class="empty"><h3>You blocked ${other.display_name}</h3><p>Unblock them from their profile to swap again.</p><a class="btn secondary" href="#/u/${otherId}">Their profile</a></div>`);
     const myT = mine.filter((i) => i.tradeable && !i.is_hidden);
     const wantSet = new Set(myW.map((w) => w.perfume_id)), theyWantSet = new Set(theirW.map((w) => w.perfume_id));
     const newbie = !stats[otherId]?.completed_swaps || !stats[state.uid]?.completed_swaps;
-    setView(html`<div class="page-head"><div class="eyebrow">New proposal</div><h1>Swap with ${other.display_name}</h1><p>Pick what you'd like from them, and what you'll send. They can accept or decline.</p></div>
-      ${!address ? html`<div class="notice rose">You need a shipping address before proposing. It stays private until both of you accept. <a href="#/me">Add it now</a></div>` : ""}
+    setView(html`<div class="page-head"><div class="eyebrow">New proposal</div><h1>Swap with ${other.display_name}</h1><p>Pick what you'd like from them, and what you'll give. Tick <b>as many items as you like on each side</b> — several samples for one rare decant is perfectly fine. They can accept or decline.</p></div>
       ${newbie ? html`<div class="notice" style="margin-top:10px"><b>Tip for first swaps:</b> start with samples or decants before trading full bottles. It builds trust on both sides.</div>` : ""}
       <form id="pf">
+        <h2>How will you swap?</h2>
+        <div class="method-pick" role="radiogroup" aria-label="How will you swap">
+          <label class="method"><input type="radio" name="method" value="mail" checked><span><b>Ship by mail</b><span class="small muted">Addresses are shared once you both accept.</span></span></label>
+          <label class="method ${canMeet ? "" : "off"}"><input type="radio" name="method" value="meetup" ${canMeet ? "" : raw("disabled")}><span><b>${PIN} Meet in person</b><span class="small muted">${canMeet ? `You're about ${miles} mile${miles === 1 ? "" : "s"} apart. No addresses shared — you agree on a public place.` : !myLoc ? html`Add your ZIP code under <a href="#/me">Me</a> to see if you're within ${NEAR_MILES} miles.` : `Only for members ${NEAR_MILES} miles or less apart.`}</span></span></label>
+        </div>
+        <div id="addrNote">${!address ? html`<div class="notice rose" style="margin-top:12px">Shipping by mail needs your address. It stays private until both of you accept. <a href="#/me">Add it now</a></div>` : ""}</div>
+        <div id="meetNote" hidden><div class="notice ok" style="margin-top:12px"><b>Meeting safely</b>${SAFETY_TIPS}</div></div>
         <h2>You'd receive</h2>
         ${theirs.length ? html`<div class="grid">${theirs.map((i) => itemTile(i, { select: "their", checked: wantSet.has(i.perfume_id) }))}</div>` : html`<p class="muted">They have nothing open to trade right now.</p>`}
-        <h2>You'd send</h2>
+        <h2>You'd give</h2>
         ${myT.length ? html`<div class="grid">${myT.map((i) => itemTile(i, { select: "mine", checked: theyWantSet.has(i.perfume_id) }))}</div>` : html`<div class="empty"><p>You have nothing marked “open to trade”.</p><a class="btn secondary" href="#/collection">Go to my collection</a></div>`}
-        <div class="field" style="margin-top:20px"><label for="msg">A note for ${other.display_name} <span class="muted">(optional)</span></label><textarea id="msg" maxlength="600" placeholder="Hi! I'd love to try this. I always wrap decants in bubble wrap…"></textarea></div>
-        <div class="field"><button class="btn" id="sendProp" ${!address || !theirs.length || !myT.length ? raw("disabled") : ""}>Send proposal</button></div>
+        <div class="swap-summary" id="swapSum" aria-live="polite"></div>
+        <div class="field" style="margin-top:20px"><label for="msg">A note for ${other.display_name} <span class="muted">(optional)</span></label><textarea id="msg" maxlength="600" placeholder="Hi! I'd love to try this. I'm offering a few samples for your decant since it's a rarer one…"></textarea></div>
+        <div class="field"><button class="btn" id="sendProp" ${!theirs.length || !myT.length ? raw("disabled") : ""}>Send proposal</button></div>
       </form>`);
     bindSelectable(view);
+    const method = () => (new FormData($("#pf")).get("method") || "mail");
+    const refresh = () => {
+      const fd = new FormData($("#pf")), give = fd.getAll("mine").length, get = fd.getAll("their").length, meet = method() === "meetup";
+      $("#swapSum").innerHTML = val(html`<span>You give <b>${give}</b> item${give === 1 ? "" : "s"}</span><span aria-hidden="true">⇄</span><span>You get <b>${get}</b> item${get === 1 ? "" : "s"}</span>
+        ${give > 1 && get === 1 ? html`<span class="small muted">Several for one — great for a rarer or pricier perfume.</span>` : ""}`);
+      $("#addrNote").hidden = meet; $("#meetNote").hidden = !meet;
+      $("#sendProp").disabled = !theirs.length || !myT.length || !give || !get || (!meet && !address);
+    };
+    $$("#pf input").forEach((i) => i.addEventListener("change", refresh));
+    refresh();
     $("#pf").addEventListener("submit", (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       run($("#sendProp"), async () => {
-        const id = await api.proposeSwap({ recipientId: otherId, myItemIds: fd.getAll("mine"), theirItemIds: fd.getAll("their"), message: $("#msg").value });
+        const id = await api.proposeSwap({ recipientId: otherId, myItemIds: fd.getAll("mine"), theirItemIds: fd.getAll("their"), message: $("#msg").value, method: method() });
         toast("Proposal sent."); go(`/swap/${id}`);
       });
     });
@@ -867,21 +912,37 @@
     const closed = ["declined", "cancelled"].includes(s.status);
     const itemsList = (list) => html`<ul class="list">${list.map((x) => html`<li class="row" style="gap:12px;flex-wrap:nowrap"><div style="width:34px;height:48px;flex:none">${bottleSvg(x.perfume, x.size)}</div><div><div class="brand">${x.perfume?.brand}</div><b class="pname" style="font-size:1.05rem">${x.perfume?.name}</b><div class="meta">${SIZE_LABEL[x.size]}${x.volume_ml ? " · " + +x.volume_ml + " ml" : ""}</div></div></li>`)}</ul>`;
 
+    const meet = s.method === "meetup";
+    const bothMet = info.my.received && info.their.received;
     let action = "";
-    if (s.status === "proposed" && !info.iAmP) action = html`<div class="row"><button class="btn" id="accept">Accept swap</button><button class="btn secondary" id="decline">Decline</button></div><p class="hint">When you accept, you'll both see each other's shipping address.</p>`;
+    if (s.status === "proposed" && !info.iAmP) action = html`<div class="row"><button class="btn" id="accept">Accept swap</button><button class="btn secondary" id="decline">Decline</button></div><p class="hint">${meet ? "This is a meet-up: no addresses are shared. Once you accept, you'll agree on a public place and time below." : "When you accept, you'll both see each other's shipping address."}</p>`;
     else if (s.status === "proposed") action = html`<button class="btn secondary" id="cancel">Withdraw proposal</button>`;
+    else if (s.status === "accepted" && meet) {
+      action = !info.my.received ? html`<div class="row"><button class="btn" id="met">We met up and swapped</button></div><p class="hint">Tap this after you've met and exchanged. When you've both confirmed, the swap is complete.</p>` : "";
+    }
     else if (s.status === "accepted") {
       action = html`<div class="row">${!info.my.shipped ? html`<button class="btn" id="ship">I've shipped my package</button>` : ""}
         ${info.their.shipped && !info.my.received ? html`<button class="btn" id="recv">Their package arrived</button>` : ""}</div>
         ${!info.my.shipped ? html`<p class="hint">Perfume is flammable: ship by ground only, cushion glass well, and seal the atomizer.</p>` : ""}`;
     }
     setView(html`<a href="#/swaps" class="btn ghost small">&larr; All swaps</a>
-      <div class="page-head" style="margin-top:8px"><div class="eyebrow">Swap started ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span></div></div>
+      <div class="page-head" style="margin-top:8px"><div class="eyebrow">Swap started ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span>${meet ? html`<span class="pill ok near">${PIN}Meeting in person</span>` : html`<span class="pill grey">By mail</span>`}</div></div>
       <div class="stack">
         ${s.message ? html`<div class="card"><div class="small muted">${info.iAmP ? "Your note" : `${on}'s note`}</div><p style="margin:4px 0 0">“${s.message}”</p></div>` : ""}
         <div class="card"><div class="match-sides">
-          <div><h3>You receive</h3>${itemsList(info.get)}</div><div><h3>You send</h3>${itemsList(info.give)}</div></div></div>
-        ${closed ? html`<div class="notice">${s.status === "declined" ? "This proposal was declined." : "This proposal was withdrawn."}</div>` : html`
+          <div><h3>You receive <span class="pill">${info.get.length}</span></h3>${itemsList(info.get)}</div><div><h3>You give <span class="pill">${info.give.length}</span></h3>${itemsList(info.give)}</div></div></div>
+        ${closed ? html`<div class="notice">${s.status === "declined" ? "This proposal was declined." : "This proposal was withdrawn."}</div>` : meet ? html`
+        <div class="card"><h3>Progress</h3><ol class="steps">
+          ${st(true, false, "Proposed", `${info.iAmP ? "You" : on} proposed meeting in person`)}
+          ${st(accepted, s.status === "proposed", "Accepted", accepted ? "Agree on a public place and time below" : `Waiting for ${info.iAmP ? on : "you"}`)}
+          ${st(bothMet, accepted && !bothMet, "Met up and swapped", accepted ? `You: ${info.my.received ? "confirmed " + fmtDate(info.my.received) : "not yet"} · ${on}: ${info.their.received ? "confirmed" : "not yet"}` : "")}
+          ${st(!!(myReview && theirReview), s.status === "completed", "Reviewed", s.status === "completed" ? `You: ${myReview ? "done" : "not yet"} · ${on}: ${theirReview ? "done" : "not yet"}` : "")}
+        </ol>${action}</div>
+        ${s.status === "accepted" ? html`<form class="card" id="planForm"><h3>${PIN} Where and when to meet</h3>
+          ${s.meet_plan ? html`<div class="meet-plan">${s.meet_plan}</div><p class="small muted">Last updated by ${s.meet_plan_by === state.uid ? "you" : on} · ${fmtDate(s.meet_plan_at)}</p>` : html`<p class="muted small">Nothing agreed yet. Suggest a busy public place, a day and a time — ${on} can change it.</p>`}
+          <div class="field"><label for="planIn">${s.meet_plan ? "Change the plan" : "Suggest a plan"}</label><input id="planIn" type="text" maxlength="300" value="${s.meet_plan || ""}" placeholder="e.g. Saturday 2 pm, café at the public library on Main St"></div>
+          <div class="row"><button class="btn small" id="planSave">Save plan</button></div></form>` : ""}
+        ${s.status !== "completed" ? html`<div class="card"><h3>Meeting safely</h3>${SAFETY_TIPS}</div>` : ""}` : html`
         <div class="card"><h3>Progress</h3><ol class="steps">
           ${st(true, false, "Proposed", `${info.iAmP ? "You" : on} proposed this swap`)}
           ${st(accepted, s.status === "proposed", "Accepted", accepted ? "Addresses are now visible to both of you" : `Waiting for ${info.iAmP ? on : "you"}`)}
@@ -889,7 +950,7 @@
           ${st(bothReceived, bothShipped && !bothReceived, "Both packages arrived", accepted ? `You: ${info.my.received ? "received" : "not yet"} · ${on}: ${info.their.received ? "received" : "not yet"}` : "")}
           ${st(!!(myReview && theirReview), s.status === "completed", "Reviewed", s.status === "completed" ? `You: ${myReview ? "done" : "not yet"} · ${on}: ${theirReview ? "done" : "not yet"}` : "")}
         </ol>${action}</div>`}
-        ${accepted && o ? html`<div class="card"><h3>Ship to</h3>${addr ? html`<div class="address">${addr.full_name}\n${addr.address}</div>` : html`<p class="muted">${on} hasn't added an address yet.</p>`}<p class="hint">Only the two of you can see each other's address, and only for accepted swaps.</p></div>` : ""}
+        ${accepted && o && !meet ? html`<div class="card"><h3>Ship to</h3>${addr ? html`<div class="address">${addr.full_name}\n${addr.address}</div>` : html`<p class="muted">${on} hasn't added an address yet.</p>`}<p class="hint">Only the two of you can see each other's address, and only for accepted swaps.</p></div>` : ""}
         ${s.status === "completed" ? html`<div class="card"><h3>${myReview ? "Your review" : o ? `How was swapping with ${on}?` : "Review"}</h3>
           ${myReview ? html`<p><span class="stars">${starsText(myReview.rating)}</span> ${myReview.comment}</p>` : !o ? html`<p class="muted">${on} has left Swapfume, so this swap can't be reviewed.</p>` : html`<form id="revForm">
             <div class="star-input" role="radiogroup" aria-label="Rating">${[5, 4, 3, 2, 1].map((n) => html`<input type="radio" name="rating" id="r${n}" value="${n}" ${n === 5 ? raw("required") : ""}><label for="r${n}" title="${n} star${n > 1 ? "s" : ""}" aria-label="${n} star${n > 1 ? "s" : ""}">★</label>`)}</div>
@@ -900,7 +961,10 @@
         <div><button class="btn ghost small" id="repSwap">Report a problem with this swap</button></div>
       </div>`);
     const bind = (sel, fn) => { const b = $(sel); if (b) b.addEventListener("click", () => run(b, fn)); };
-    bind("#accept", async () => { await api.respondSwap(s.id, true); toast("Accepted! You can now see their address."); route(); refreshSwapDot(); });
+    bind("#accept", async () => { await api.respondSwap(s.id, true); toast(meet ? "Accepted! Now agree where and when to meet." : "Accepted! You can now see their address."); route(); refreshSwapDot(); });
+    bind("#met", async () => { if (await confirmBox("Did you meet up and swap?", "Confirm only after you've exchanged the perfumes. When you've both confirmed, the swap is complete and you can review each other.", "Yes, we swapped")) { await api.markMet(s.id); toast("Lovely — enjoy your new scents!"); route(); refreshSwapDot(); } });
+    const pf = $("#planForm");
+    if (pf) pf.addEventListener("submit", (e) => { e.preventDefault(); run($("#planSave"), async () => { await api.setMeetPlan(s.id, $("#planIn").value); toast("Meeting plan saved."); route(); }); });
     bind("#decline", async () => { if (await confirmBox("Decline this swap?", `${on} will see that you declined.`, "Decline")) { await api.respondSwap(s.id, false); route(); refreshSwapDot(); } });
     bind("#cancel", async () => { if (await confirmBox("Withdraw your proposal?", "You can always propose again later.", "Withdraw")) { await api.cancelSwap(s.id); route(); } });
     bind("#ship", async () => { await api.markShipped(s.id); toast("Marked as shipped."); route(); refreshSwapDot(); });
@@ -916,7 +980,7 @@
   }
 
   async function pageMe() {
-    const p = state.profile, [addr, blocks] = await Promise.all([api.getMyAddress(), api.listBlocks()]);
+    const p = state.profile, [addr, blocks, loc] = await Promise.all([api.getMyAddress(), api.listBlocks(), api.getMyLocation().catch(() => null)]);
     setView(html`<div class="page-head"><div class="row between" style="align-items:center;flex-wrap:nowrap;gap:12px"><h1 style="margin:0">My profile</h1><button class="btn secondary small" data-signout>Sign out</button></div>
       <p class="small muted" style="margin:4px 0 6px">Signed in as <b>${p.display_name}</b></p><p>Your name, city and bio are visible to members. Your address is private.</p></div>
       <form class="card" id="profForm"><h3>Public profile</h3>
@@ -933,6 +997,10 @@
         <div class="field"><label for="an">Name on the package</label><input id="an" type="text" required maxlength="120" autocomplete="name" value="${addr?.full_name || ""}"></div>
         <div class="field"><label for="aa">Mailing address</label><textarea id="aa" required minlength="5" maxlength="500" autocomplete="street-address" placeholder="Street, city, state, ZIP">${addr?.address || ""}</textarea></div>
         <div class="field"><button class="btn" id="saveAddr">Save address</button></div></form>
+      <form class="card" id="zipForm"><h3>${PIN} Your area <span class="pill">Private</span></h3>
+        <p class="muted small">Your ZIP code lets Swapfume show who's nearby and suggest meeting in person within ${NEAR_MILES} miles. Nobody sees your ZIP code — other members only see your city and roughly how far away you are (e.g. “about 8 miles”).</p>
+        <div class="row" style="align-items:flex-end"><div style="flex:0 1 180px"><label for="zipIn">ZIP code</label><input id="zipIn" type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code" value="${loc?.zip || ""}" placeholder="e.g. 11201" required></div>
+          <button class="btn" id="saveZip">${loc ? "Update" : "Save"}</button>${loc ? html`<button type="button" class="btn ghost" id="clearZip">Remove</button>` : ""}</div></form>
       <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a></div></div>
       <div class="card"><h3>Blocked members</h3>
         ${blocks.length ? html`<ul class="list">${blocks.map((b) => html`<li class="row between"><span>${avatar(b.blocked)} <a href="#/u/${b.blocked_id}">${b.blocked?.display_name || "Former member"}</a></span><button class="btn small ghost" data-unblock="${b.blocked_id}">Unblock</button></li>`)}</ul>`
@@ -948,6 +1016,8 @@
     $("#profForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveProf"), async () => {
       state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: $("#pk").value, bio: $("#pb").value }); toast("Profile saved."); }); });
     $("#addrForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveAddr"), async () => { await api.saveMyAddress({ full_name: $("#an").value, address: $("#aa").value }); toast("Address saved."); }); });
+    $("#zipForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveZip"), async () => { await api.setMyLocation($("#zipIn").value); toast("ZIP code saved. Nearby swappers will show in your matches."); route(); }); });
+    const cz = $("#clearZip"); if (cz) cz.addEventListener("click", () => run(cz, async () => { await api.clearMyLocation(); toast("ZIP code removed."); route(); }));
     $$("[data-signout]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.signOut(); location.hash = "/"; toast("You're signed out."); })));
     $("#delAcct").addEventListener("click", deleteAccountDialog);
     $$("[data-unblock]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.unblockUser(b.dataset.unblock); toast("Unblocked."); route(); })));

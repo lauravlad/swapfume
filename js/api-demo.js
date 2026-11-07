@@ -5,6 +5,14 @@
 */
 (function () {
   const KEY = "swapfume_demo_db_v1";
+  // Demo members' pretend ZIP codes (centre points from js/data/zips.csv).
+  const DEMO_LOCATIONS = [
+    { user_id: "m-margaux", zip: "11201", lat: 40.69, lon: -73.99 },
+    { user_id: "m-noor", zip: "07030", lat: 40.75, lon: -74.03 },
+    { user_id: "m-theo", zip: "97205", lat: 45.52, lon: -122.70 },
+    { user_id: "m-june", zip: "78701", lat: 30.27, lon: -97.74 },
+    { user_id: "m-ravi", zip: "60611", lat: 41.89, lon: -87.62 }
+  ];
   const SESSION = "swapfume_demo_session_v1";
   const now = () => new Date().toISOString();
   const daysAgo = (d) => new Date(Date.now() - d * 864e5).toISOString();
@@ -12,7 +20,7 @@
   const clone = (x) => JSON.parse(JSON.stringify(x));
 
   function freshDb() {
-    const db = { version: 4, seq: 10000, users: [], profiles: [], blocks: [], perfumeReviews: [], reviewVotes: [], addresses: [], perfumes: [], items: [], wishes: [], swaps: [], swapItems: [], reviews: [], reports: [], noteSuggestions: [], photoSuggestions: [] };
+    const db = { version: 4, seq: 10000, locations: [], users: [], profiles: [], blocks: [], perfumeReviews: [], reviewVotes: [], addresses: [], perfumes: [], items: [], wishes: [], swaps: [], swapItems: [], reviews: [], reports: [], noteSuggestions: [], photoSuggestions: [] };
     const seenKeys = new Set();
     window.CATALOG_SEED.forEach((row, i) => {
       const k = Util.perfumeKey(row[0], row[1], row[2]);
@@ -30,8 +38,10 @@
       ["m-theo", "theo@demo.test", "Theo", "Portland", "United States", "Woods, smoke, rain. I decant carefully and pack with bubble wrap.", false, "22 Fir St, Portland, OR 97205"],
       ["m-june", "june@demo.test", "June", "Austin", "United States", "Gourmand girl trying to branch out into greens.", false, "8 Pecan Ave, Austin, TX 78701"],
       ["m-ravi", "ravi@demo.test", "Ravi", "Chicago", "United States", "Fresh and fruity for work, oud for weekends.", false, "415 Lake Shore Dr, Chicago, IL 60611"],
-      ["m-noor", "noor@demo.test", "Noor", "Seattle", "United States", "Skin scents and musks. Happy to send samples to new members.", false, "77 Pine St, Seattle, WA 98101"]
+      ["m-noor", "noor@demo.test", "Noor", "Hoboken", "United States", "Skin scents and musks. Happy to send samples to new members.", false, "77 River St, Hoboken, NJ 07030"]
     ];
+    // Pretend ZIP codes (centre points from js/data/zips.csv). Noor in Hoboken is ~5 miles from Margaux in Brooklyn.
+    db.locations = DEMO_LOCATIONS.map((l) => ({ ...l }));
     members.forEach(([id, email, display_name, city, country, bio, is_admin, address], i) => {
       db.users.push({ id, email, password: "demo1234" });
       db.profiles.push({ id, display_name, city, country, bio, is_admin, is_banned: false, adult_confirmed_at: daysAgo(80 - i * 5), created_at: daysAgo(80 - i * 5) });
@@ -143,6 +153,7 @@
     });
     db.noteSuggestions = db.noteSuggestions || [];
     if (!db.photoSuggestions) { db.photoSuggestions = []; changed = true; }
+    if (!db.locations) { db.locations = DEMO_LOCATIONS.filter((l) => db.profiles.some((p) => p.id === l.user_id)).map((l) => ({ ...l })); changed = true; }
     // Launch update: blocks list, 18+ confirmation (demo members count as confirmed),
     // and any catalog perfumes added since this demo data was made.
     if (!db.blocks) { db.blocks = []; changed = true; }
@@ -181,6 +192,11 @@
   const perf = (id) => db.perfumes.find((p) => p.id === id) || null;
   const active = () => { const p = prof(me()); if (!p || p.is_banned || !p.adult_confirmed_at) fail("Your account cannot do this right now."); };
   // Same rules as migration 008: either side blocking hides listings/wishlists and stops swaps.
+  // Unrounded distance in miles between me and another member, or null if either has no ZIP.
+  const rawDistance = (other) => {
+    const a = db.locations.find((x) => x.user_id === uid), b = db.locations.find((x) => x.user_id === other);
+    return a && b ? Util.milesBetween(a, b) : null;
+  };
   const blockedWith = (other) => !!uid && other !== uid && db.blocks.some((b) => (b.blocker_id === uid && b.blocked_id === other) || (b.blocker_id === other && b.blocked_id === uid));
   const isAdultBirthdate = (s) => {
     const d = new Date(String(s || "") + "T00:00:00");
@@ -294,6 +310,7 @@
       db.wishes = db.wishes.filter((w) => w.user_id !== v);
       db.addresses = db.addresses.filter((a) => a.user_id !== v);
       db.blocks = db.blocks.filter((b) => b.blocker_id !== v && b.blocked_id !== v);
+      db.locations = db.locations.filter((x) => x.user_id !== v);
       db.noteSuggestions = db.noteSuggestions.filter((n) => n.suggested_by !== v);
       db.photoSuggestions = db.photoSuggestions.filter((n) => n.suggested_by !== v || n.status === "approved");
       db.reports = db.reports.filter((r) => r.reporter_id !== v && r.target_user_id !== v);
@@ -323,7 +340,7 @@
     },
     async getPartnerAddress(swapId) {
       const s = mySwap(swapId);
-      if (!["accepted", "completed"].includes(s.status)) return null;
+      if (!["accepted", "completed"].includes(s.status) || s.method === "meetup") return null;
       const other = s.proposer_id === uid ? s.recipient_id : s.proposer_id;
       if (!other) return null; // partner deleted their account
       return clone(db.addresses.find((a) => a.user_id === other) || null);
@@ -399,16 +416,22 @@
     },
     async removeWish(id) { db.wishes = db.wishes.filter((w) => !(w.id === Number(id) && w.user_id === me())); save(); },
 
-    async proposeSwap({ recipientId, myItemIds, theirItemIds, message }) {
+    async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail" }) {
       active(); await tick();
+      if (!["mail", "meetup"].includes(method)) fail("Choose mail or meeting in person.");
       if (recipientId === uid) fail("You cannot swap with yourself.");
       if (!prof(recipientId) || prof(recipientId).is_banned || blockedWith(recipientId)) fail("This member is not available for swaps.");
       if (!myItemIds?.length || !theirItemIds?.length) fail("Pick at least one item from each side.");
-      if (!db.addresses.find((a) => a.user_id === uid)) fail("Add your shipping address in your profile first (it stays private until a swap is accepted).");
+      if (method === "mail" && !db.addresses.find((a) => a.user_id === uid)) fail("Add your shipping address in your profile first (it stays private until a swap is accepted).");
+      if (method === "meetup") {
+        const d = rawDistance(recipientId);
+        if (d == null) fail("Meeting in person needs both of you to add a ZIP code under Me.");
+        if (d > 20) fail("Meeting in person is for members 20 miles or less apart.");
+      }
       const ok = (ids, owner) => ids.every((id) => db.items.find((i) => i.id === Number(id) && i.owner_id === owner && i.tradeable && !i.is_hidden));
       if (!ok(myItemIds, uid)) fail("Some of your items are not available for trade.");
       if (!ok(theirItemIds, recipientId)) fail("Some of their items are no longer available.");
-      const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
+      const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
       db.swaps.push(s);
       [...myItemIds, ...theirItemIds].forEach((id) => {
         const i = db.items.find((x) => x.id === Number(id));
@@ -416,6 +439,41 @@
       });
       save(); return s.id;
     },
+    async setMeetPlan(id, plan) {
+      const s = mySwap(id);
+      if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
+      if (s.method !== "meetup") fail("This swap is by mail.");
+      if (s.status !== "accepted") fail("You can plan the meet-up once the swap is accepted.");
+      s.meet_plan = String(plan || "").trim().slice(0, 300); s.meet_plan_by = uid; s.meet_plan_at = now(); s.updated_at = now(); save();
+    },
+    async markMet(id) {
+      const s = mySwap(id);
+      if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
+      if (s.method !== "meetup") fail("This swap is by mail.");
+      if (s.status !== "accepted") fail("This swap is not in progress.");
+      const side = s.proposer_id === uid ? "proposer" : "recipient";
+      s[side + "_shipped_at"] = s[side + "_shipped_at"] || now(); s[side + "_received_at"] = s[side + "_received_at"] || now();
+      if (s.proposer_received_at && s.recipient_received_at) s.status = "completed";
+      s.updated_at = now(); save();
+    },
+
+    // Location: ZIP code is private; others only get rounded distances (same rules as migration 011).
+    async getMyLocation() { if (!uid) return null; const l = db.locations.find((x) => x.user_id === uid); return l ? { zip: l.zip } : null; },
+    async setMyLocation(zip) {
+      me(); const z = await Util.zipLookup(zip);
+      db.locations = db.locations.filter((x) => x.user_id !== uid);
+      db.locations.push({ user_id: uid, zip: z.zip, lat: Math.round(z.lat * 100) / 100, lon: Math.round(z.lon * 100) / 100 }); save();
+    },
+    async clearMyLocation() { db.locations = db.locations.filter((x) => x.user_id !== me()); save(); },
+    async memberDistances(userIds) {
+      const out = {};
+      [...new Set(userIds)].filter((id) => id && id !== uid && !blockedWith(id)).forEach((id) => {
+        const d = rawDistance(id); const m = d == null ? null : Util.roundMiles(d);
+        if (m != null) out[id] = m;
+      });
+      return out;
+    },
+
     async listMySwaps() {
       me();
       return db.swaps.filter((s) => s.proposer_id === uid || s.recipient_id === uid)
@@ -426,7 +484,7 @@
       const s = mySwap(id);
       if (s.recipient_id !== uid) fail("Only the person who received this proposal can answer it.");
       if (s.status !== "proposed") fail("This proposal has already been answered.");
-      if (accept) { active(); if (!s.proposer_id || blockedWith(s.proposer_id)) fail("This member is not available for swaps."); if (!db.addresses.find((a) => a.user_id === uid)) fail("Add your shipping address in your profile before accepting."); }
+      if (accept) { active(); if (!s.proposer_id || blockedWith(s.proposer_id)) fail("This member is not available for swaps."); if (s.method !== "meetup" && !db.addresses.find((a) => a.user_id === uid)) fail("Add your shipping address in your profile before accepting."); }
       s.status = accept ? "accepted" : "declined"; s.updated_at = now(); save();
     },
     async cancelSwap(id) {
@@ -437,6 +495,7 @@
     async markShipped(id) {
       const s = mySwap(id);
       if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
+      if (s.method === "meetup") fail("This swap is a meet-up — confirm when you have met.");
       if (s.status !== "accepted") fail("You can mark shipping only on an accepted swap.");
       const k = s.proposer_id === uid ? "proposer_shipped_at" : "recipient_shipped_at";
       s[k] = s[k] || now(); s.updated_at = now(); save();

@@ -44,5 +44,34 @@
     });
   }
 
-  window.Util = { normText, brandNameKey, perfumeKey, resizeImage };
+  // ZIP code -> its centre point, from js/data/zips.csv (US Census 2024 Gazetteer, public domain).
+  // Loaded only the first time someone saves a ZIP code.
+  let zipTable = null;
+  async function zipLookup(zip) {
+    zip = String(zip || "").trim();
+    if (!/^\d{5}$/.test(zip)) throw new Error("Please enter a 5-digit US ZIP code.");
+    if (!zipTable) {
+      const res = await fetch("js/data/zips.csv");
+      if (!res.ok) throw new Error("Couldn't load the ZIP code list. Please try again.");
+      zipTable = new Map();
+      (await res.text()).split("\n").forEach((line) => {
+        if (!line || line[0] === "#") return;
+        const [z, lat, lon] = line.split(",");
+        zipTable.set(z, [Number(lat), Number(lon)]);
+      });
+    }
+    const hit = zipTable.get(zip);
+    if (!hit) throw new Error("We couldn't find that ZIP code. Check it and try again.");
+    return { zip, lat: hit[0], lon: hit[1] };
+  }
+  // Great-circle distance in miles (demo mode; the real database does this itself).
+  function milesBetween(a, b) {
+    const r = (d) => (d * Math.PI) / 180;
+    const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lon - a.lon) / 2) ** 2;
+    return 3958.8 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  // Same rounding as member_distances(): nearest mile up to 20, nearest 5 up to 50, nothing beyond.
+  const roundMiles = (d) => (d > 50 ? null : d <= 20 ? Math.max(1, Math.round(d)) : Math.round(d / 5) * 5);
+
+  window.Util = { normText, brandNameKey, perfumeKey, resizeImage, zipLookup, milesBetween, roundMiles };
 })();
