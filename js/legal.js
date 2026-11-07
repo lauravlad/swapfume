@@ -32,7 +32,7 @@
 <ul>
   <li><b>Other members</b> can see your public profile, what you mark as open to trade, your wishlist, your completed-swap count, reviews, and the perfume reviews you write (with your display name). Who voted "Helpful" is not shown.</li>
   <li><b>Your address</b> is shown only to the other person in a swap by mail, and only after you have <i>both</i> accepted it. It is never shared for swaps where you meet in person.</li>
-  <li><b>Your ZIP code</b> is never shown to anyone. Other members see only your city (if you add one) and a rounded distance such as "about 8 miles", and only up to 50 miles away. People you've blocked, or who blocked you, don't see it at all.</li>
+  <li><b>Your ZIP code</b> is never shown to anyone. Other members see only your city (if you add one), a rounded distance such as "about 8 miles" (only up to 50 miles away), and a small map of your general area on your profile. That map is centred on a point we blur by several miles and has no pin, so it shows the area, never your exact location. People you've blocked, or who blocked you, see none of this.</li>
   <li><b>Photos</b> you upload are stored at a public web address so they can be displayed; anyone with the link could view them. Don't include personal details in photos.</li>
   <li><b>Our admins</b> can see what's needed to moderate: listings, reports, swaps and member accounts.</li>
   <li>People you <b>block</b> can no longer see your listings or wishlist, and you can't see theirs.</li>
@@ -42,7 +42,7 @@
 <p>Only to run ${APP}: to let you sign in, match you with other members, show swap partners where to ship, build trust through reviews, keep the community safe (moderation, bans, reports), and answer your support messages. We don't sell your data, and we don't show ads.</p>
 
 <h2>Service providers</h2>
-<p>We use trusted providers to host the site and the database (for example Supabase for accounts, data and photo storage, and our web host for the pages). They process data only on our behalf. Fonts are loaded from Google Fonts, which sees your IP address when the page loads.</p>
+<p>We use trusted providers to host the site and the database (for example Supabase for accounts, data and photo storage, and our web host for the pages). They process data only on our behalf. Fonts are loaded from Google Fonts, and the small area maps from OpenStreetMap; both see your IP address when the page loads.</p>
 
 <h2>How long we keep it</h2>
 <p>As long as you have an account. You can remove your ZIP code any time under <b>Me</b>. When you delete your account we remove your profile, listings, wishlist, photos, address, ZIP code and blocks. Swaps you completed stay in your partners' history, and swap reviews and perfume reviews you wrote stay, shown as "Former member" with no link to you. Reviews about you are removed. Backups and logs may keep traces for a short time before they expire.</p>

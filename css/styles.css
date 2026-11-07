@@ -455,3 +455,15 @@ dialog::backdrop { background: rgba(38, 28, 26, .45); backdrop-filter: blur(3px)
 @media (min-width: 760px) { .swap-summary { bottom: 16px; } }
 .meet-plan { font-family: var(--serif); font-size: 1.25rem; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, #FBF6F0, #F6EDE4); border: 1px solid var(--line); margin-bottom: 6px; }
 .tips { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: .92rem; }
+
+/* ---- General-area map (OpenStreetMap tiles, blurred centre, no pin) ---- */
+.profile-top { display: flex; gap: 18px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.area-map { margin: 0; flex: none; width: 200px; }
+.area-tiles { position: relative; width: 200px; height: 200px; overflow: hidden; border-radius: 22px; background: var(--surface-2); box-shadow: inset 0 0 0 1px rgba(255,255,255,.5), var(--shadow); }
+.area-tiles img { position: absolute; width: 256px; height: 256px; max-width: none; filter: saturate(.75) sepia(.12); }
+.area-glow { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, rgba(134, 47, 68, .16) 0, rgba(134, 47, 68, .10) 28%, transparent 46%), radial-gradient(circle at 50% 50%, transparent 60%, rgba(251, 247, 242, .55) 100%); pointer-events: none; }
+.area-map figcaption { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; font-size: .75rem; color: var(--muted); }
+.area-map figcaption a { color: var(--muted); font-size: .68rem; white-space: nowrap; }
+.zip-preview { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.zip-preview p { flex: 1; min-width: 180px; margin: 0; }
+@media (max-width: 520px) { .profile-top .area-map, .profile-top .area-tiles { width: 100%; } .profile-top .area-tiles { height: 180px; } }

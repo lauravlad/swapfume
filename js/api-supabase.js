@@ -184,6 +184,12 @@
         check(await sb.rpc("set_my_location", { p_zip: z.zip, p_lat: z.lat, p_lon: z.lon }));
       },
       async clearMyLocation() { check(await sb.rpc("clear_my_location")); },
+      // Blurred point (rounded to 0.1°) for the general-area map; null if no ZIP or not allowed.
+      async memberArea(userId) {
+        if (!uid || !userId) return null;
+        const rows = check(await sb.rpc("member_area", { p_user: userId }));
+        return rows?.length ? { lat: Number(rows[0].lat), lon: Number(rows[0].lon) } : null;
+      },
       async memberDistances(userIds) {
         const ids = [...new Set(userIds)].filter(Boolean);
         if (!ids.length || !uid) return {};

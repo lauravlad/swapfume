@@ -300,6 +300,21 @@
     if (miles == null) return "";
     return miles <= NEAR_MILES ? html`<span class="pill ok near">${PIN}Nearby · about ${miles} mi</span>` : html`<span class="pill grey">about ${miles} mi</span>`;
   }
+  // A small square map of a member's general area: OpenStreetMap tiles around a point the database
+  // has already blurred to 0.1° (~5–7 miles). No pin — it shows the area, never the exact spot.
+  const MAP_ZOOM = 10, MAP_SIZE = 200;
+  function areaMap(area, label) {
+    if (!area) return "";
+    const n = 256 * 2 ** MAP_ZOOM, rad = (area.lat * Math.PI) / 180;
+    const px = ((area.lon + 180) / 360) * n, py = ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n;
+    const left = px - MAP_SIZE / 2, top = py - MAP_SIZE / 2, tiles = [];
+    for (let tx = Math.floor(left / 256); tx <= Math.floor((left + MAP_SIZE - 1) / 256); tx++)
+      for (let ty = Math.floor(top / 256); ty <= Math.floor((top + MAP_SIZE - 1) / 256); ty++)
+        tiles.push(html`<img src="https://tile.openstreetmap.org/${MAP_ZOOM}/${tx}/${ty}.png" alt="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="left:${Math.round(tx * 256 - left)}px;top:${Math.round(ty * 256 - top)}px">`);
+    return html`<figure class="area-map" aria-label="Map of the general area around ${label || "this member"}">
+      <div class="area-tiles">${tiles}<span class="area-glow" aria-hidden="true"></span></div>
+      <figcaption><span>${PIN}${label ? `Around ${label}` : "General area"}</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a></figcaption></figure>`;
+  }
   const SAFETY_TIPS = html`<ul class="tips">
     <li>Meet in a <b>busy public place</b> in daylight — a café, a library lobby, a mall.</li>
     <li><b>Tell a friend</b> where you're going and when; bring one along if you like.</li>
@@ -804,11 +819,12 @@
     const p = await api.getProfile(id);
     if (!p) return setView(html`<div class="empty"><h3>Member not found</h3></div>`);
     const isMe = id === state.uid;
-    const [items, wishes, reviews, stats, blocks, dist] = await Promise.all([api.listItems({ ownerId: id }), api.listWishes({ userId: id }), api.listReviews({ revieweeId: id }), api.getStats([id]), isMe ? [] : api.listBlocks(), isMe ? {} : api.memberDistances([id]).catch(() => ({}))]);
+    const [items, wishes, reviews, stats, blocks, dist, area] = await Promise.all([api.listItems({ ownerId: id }), api.listWishes({ userId: id }), api.listReviews({ revieweeId: id }), api.getStats([id]), isMe ? [] : api.listBlocks(), isMe ? {} : api.memberDistances([id]).catch(() => ({})), api.memberArea(id).catch(() => null)]);
     const iBlocked = blocks.some((b) => b.blocked_id === id);
     const shown = isMe ? items : items.filter((i) => i.tradeable);
     const miles = dist[id];
-    setView(html`<div class="card"><div class="profile-head">${avatar(p, "lg")}<div><h1>${p.display_name}</h1><div class="muted row" style="gap:8px">${place(p) || "Location not set"} ${distanceBadge(miles)}</div><div style="margin-top:6px">${trust(stats[id])}</div></div></div>
+    setView(html`<div class="card"><div class="profile-top"><div class="profile-head">${avatar(p, "lg")}<div><h1>${p.display_name}</h1><div class="muted row" style="gap:8px">${place(p) || "Location not set"} ${distanceBadge(miles)}</div><div style="margin-top:6px">${trust(stats[id])}</div></div></div>
+        ${iBlocked ? "" : areaMap(area, p.city)}</div>
         ${!iBlocked && miles != null && miles <= NEAR_MILES ? html`<div class="notice ok" style="margin-top:12px">${PIN} You're about ${miles} mile${miles === 1 ? "" : "s"} apart. When you propose a swap you can choose <b>Meet in person</b> instead of shipping.</div>` : ""}
         ${p.is_banned ? html`<div class="notice rose" style="margin-top:12px">This account has been suspended.</div>` : ""}
         ${p.bio ? html`<p style="margin-top:14px">${p.bio}</p>` : ""}
@@ -980,7 +996,7 @@
   }
 
   async function pageMe() {
-    const p = state.profile, [addr, blocks, loc] = await Promise.all([api.getMyAddress(), api.listBlocks(), api.getMyLocation().catch(() => null)]);
+    const p = state.profile, [addr, blocks, loc, myArea] = await Promise.all([api.getMyAddress(), api.listBlocks(), api.getMyLocation().catch(() => null), api.memberArea(state.uid).catch(() => null)]);
     setView(html`<div class="page-head"><div class="row between" style="align-items:center;flex-wrap:nowrap;gap:12px"><h1 style="margin:0">My profile</h1><button class="btn secondary small" data-signout>Sign out</button></div>
       <p class="small muted" style="margin:4px 0 6px">Signed in as <b>${p.display_name}</b></p><p>Your name, city and bio are visible to members. Your address is private.</p></div>
       <form class="card" id="profForm"><h3>Public profile</h3>
@@ -998,9 +1014,10 @@
         <div class="field"><label for="aa">Mailing address</label><textarea id="aa" required minlength="5" maxlength="500" autocomplete="street-address" placeholder="Street, city, state, ZIP">${addr?.address || ""}</textarea></div>
         <div class="field"><button class="btn" id="saveAddr">Save address</button></div></form>
       <form class="card" id="zipForm"><h3>${PIN} Your area <span class="pill">Private</span></h3>
-        <p class="muted small">Your ZIP code lets Swapfume show who's nearby and suggest meeting in person within ${NEAR_MILES} miles. Nobody sees your ZIP code — other members only see your city and roughly how far away you are (e.g. “about 8 miles”).</p>
+        <p class="muted small">Your ZIP code lets Swapfume show who's nearby and suggest meeting in person within ${NEAR_MILES} miles. Nobody sees your ZIP code — other members only see your city, roughly how far away you are (e.g. “about 8 miles”) and a small map of your general area, never your exact spot.</p>
         <div class="row" style="align-items:flex-end"><div style="flex:0 1 180px"><label for="zipIn">ZIP code</label><input id="zipIn" type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code" value="${loc?.zip || ""}" placeholder="e.g. 11201" required></div>
-          <button class="btn" id="saveZip">${loc ? "Update" : "Save"}</button>${loc ? html`<button type="button" class="btn ghost" id="clearZip">Remove</button>` : ""}</div></form>
+          <button class="btn" id="saveZip">${loc ? "Update" : "Save"}</button>${loc ? html`<button type="button" class="btn ghost" id="clearZip">Remove</button>` : ""}</div>
+        ${myArea ? html`<div class="zip-preview"><div>${areaMap(myArea, p.city)}</div><p class="small muted">This is what members see on your profile: the general area, centred on a point blurred by several miles. Your ZIP code and exact location are never shown.</p></div>` : ""}</form>
       <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a></div></div>
       <div class="card"><h3>Blocked members</h3>
         ${blocks.length ? html`<ul class="list">${blocks.map((b) => html`<li class="row between"><span>${avatar(b.blocked)} <a href="#/u/${b.blocked_id}">${b.blocked?.display_name || "Former member"}</a></span><button class="btn small ghost" data-unblock="${b.blocked_id}">Unblock</button></li>`)}</ul>`

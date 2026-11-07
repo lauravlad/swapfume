@@ -36,7 +36,7 @@ iPhone app (ios/) ─ bundles the same files ─► same Supabase project
 
 ## Database status
 
-Run on the live project on 2026-11-05: `supabase/migrations/001`–`004`, then `supabase/live-update/01`–`10` (and `11` and `12` on 2026-11-07) (the SQL Editor can't take big pastes, so 005–009 are split into files under 120 KB). The check query gave **2758 perfumes | 114 classics | 362 with perfumer | 656 with notes | 0 duplicates**.
+Run on the live project on 2026-11-05: `supabase/migrations/001`–`004`, then `supabase/live-update/01`–`10` (and `11`–`13` on 2026-11-07) (the SQL Editor can't take big pastes, so 005–009 are split into files under 120 KB). The check query gave **2758 perfumes | 114 classics | 362 with perfumer | 656 with notes | 0 duplicates**.
 
 Future database changes: add a new migration, run `node tools/make-seed-sql.js`, then run only the new files in the SQL Editor.
 
@@ -56,6 +56,7 @@ Add `?demo=1` to any address (for example `https://swapfume.com/?demo=1`, or loc
 - **2026-11-07:** sign-out made easy to find (top and bottom of **Me**); added the `?demo=1` switch.
 - **2026-11-07:** members suggest catalog photos of their own bottles (Admin tools → Photos to approve), profile photos (avatars), a clearer photo picker, and a refreshed design. Database: migration 010 / `live-update/11_photo_suggestions.sql`, run on the live project.
 - **2026-11-07:** ZIP-code location (private), "Nearby · about X mi" within 20 miles, a full **Meet in person** swap option (no addresses, meeting plan, both confirm "met up"), many-for-one summary on proposals, Terms/Privacy updated. Database: migration 011 / `live-update/12_location_meetups.sql`. ZIP centre points: `js/data/zips.csv` from the U.S. Census Bureau 2024 Gazetteer (public domain).
+- **2026-11-07:** a small general-area map on profiles (OpenStreetMap tiles around a point blurred to 0.1°, no pin; preview under Me). Database: migration 012 / `live-update/13_area_map.sql`.
 
 ## Still to do
 

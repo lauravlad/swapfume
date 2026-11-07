@@ -465,6 +465,12 @@
       db.locations.push({ user_id: uid, zip: z.zip, lat: Math.round(z.lat * 100) / 100, lon: Math.round(z.lon * 100) / 100 }); save();
     },
     async clearMyLocation() { db.locations = db.locations.filter((x) => x.user_id !== me()); save(); },
+    // Blurred point (rounded to 0.1°) for the general-area map, same rules as member_area() in migration 012.
+    async memberArea(userId) {
+      if (!uid || !userId || (userId !== uid && blockedWith(userId))) return null;
+      const l = db.locations.find((x) => x.user_id === userId);
+      return l ? { lat: Math.round(l.lat * 10) / 10, lon: Math.round(l.lon * 10) / 10 } : null;
+    },
     async memberDistances(userIds) {
       const out = {};
       [...new Set(userIds)].filter((id) => id && id !== uid && !blockedWith(id)).forEach((id) => {

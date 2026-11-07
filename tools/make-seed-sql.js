@@ -165,6 +165,7 @@ pfc.forEach((c, k) => parts.push([`perfumers_${k + 1}_of_${pfc.length}`, head(`p
 // Migrations added after the first live setup go last, so earlier file numbers never change.
 parts.push(['photo_suggestions', head('010 members suggest catalog photos; profile photos', 'Same as supabase/migrations/010_photo_suggestions.sql.') + mig('010_photo_suggestions.sql')]);
 parts.push(['location_meetups', head('011 ZIP-code location, distances, meeting in person', 'Same as supabase/migrations/011_location_meetups.sql.') + mig('011_location_meetups.sql')]);
+parts.push(['area_map', head('012 general-area map on profiles', 'Same as supabase/migrations/012_area_map.sql.') + mig('012_area_map.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);
