@@ -25,7 +25,7 @@
     // Where email links (confirm sign-up, reset password) should land: this page on the web,
     // the public website when running inside the iPhone app.
     const siteUrl = () => (window.Capacitor?.isNativePlatform?.() && window.APP_CONFIG.PUBLIC_SITE_URL) || location.origin + location.pathname;
-    const LITE = "id,display_name,city,country,is_banned";
+    const LITE = "id,display_name,city,country,is_banned,avatar_url";
     const ITEM_SEL = `*, perfume:perfumes(*), owner:profiles(${LITE})`;
     const WISH_SEL = `*, perfume:perfumes(*), user:profiles(${LITE})`;
     const SWAP_SEL = "*, proposer:profiles!swaps_proposer_id_fkey(*), recipient:profiles!swaps_recipient_id_fkey(*), items:swap_items(*, perfume:perfumes(*))";
@@ -85,7 +85,7 @@
       async confirmAdult(birthdate) { check(await sb.rpc("confirm_adult", { p_birthdate: birthdate })); },
 
       async listBlocks() {
-        return check(await sb.from("blocks").select("*, blocked:profiles!blocks_blocked_id_fkey(id,display_name,city,country,is_banned)").eq("blocker_id", me()).order("created_at", { ascending: false }));
+        return check(await sb.from("blocks").select("*, blocked:profiles!blocks_blocked_id_fkey(id,display_name,city,country,is_banned,avatar_url)").eq("blocker_id", me()).order("created_at", { ascending: false }));
       },
       async blockUser(userId) { check(await sb.rpc("block_user", { p_user: userId })); },
       async unblockUser(userId) { check(await sb.rpc("unblock_user", { p_user: userId })); },
@@ -185,7 +185,7 @@
       async markReceived(id) { check(await sb.rpc("mark_received", { p_swap: Number(id) })); },
 
       async listReviews({ revieweeId, reviewerId, swapId } = {}) {
-        let q = sb.from("reviews").select("*, reviewer:profiles!reviews_reviewer_id_fkey(id,display_name)");
+        let q = sb.from("reviews").select("*, reviewer:profiles!reviews_reviewer_id_fkey(id,display_name,avatar_url)");
         if (revieweeId) q = q.eq("reviewee_id", revieweeId);
         if (reviewerId) q = q.eq("reviewer_id", reviewerId);
         if (swapId) q = q.eq("swap_id", swapId);
@@ -212,7 +212,7 @@
       // Perfume reviews (stars + tags)
       async listPerfumeReviews(perfumeId) {
         me();
-        const rows = check(await sb.from("perfume_reviews").select("*, author:profiles!perfume_reviews_user_id_fkey(id,display_name,city,country,is_banned)")
+        const rows = check(await sb.from("perfume_reviews").select("*, author:profiles!perfume_reviews_user_id_fkey(id,display_name,city,country,is_banned,avatar_url)")
           .eq("perfume_id", Number(perfumeId)).order("created_at", { ascending: false }).limit(300));
         const ids = rows.map((r) => r.id);
         const mine = ids.length ? check(await sb.from("perfume_review_votes").select("review_id").in("review_id", ids)) : [];
@@ -255,6 +255,33 @@
         const url = file ? await uploadPhoto(file) : null;
         check(await sb.rpc("admin_set_perfume_image", { p_perfume: Number(perfumeId), p_url: url, p_credit: credit || "" }));
       },
+      // Profile photo (avatar). file = null removes it.
+      async setMyAvatar(file) {
+        let url = null;
+        if (file) url = await (async () => {
+          const { blob } = await Util.resizeImage(file, 400, 0.85);
+          const path = `${me()}/avatar-${Date.now()}.jpg`;
+          check(await sb.storage.from("bottle-photos").upload(path, blob, { contentType: "image/jpeg" }));
+          return sb.storage.from("bottle-photos").getPublicUrl(path).data.publicUrl;
+        })();
+        check(await sb.rpc("set_my_avatar", { p_url: url }));
+        return this.getProfile(me());
+      },
+      async adminClearAvatar(userId) { check(await sb.rpc("admin_clear_avatar", { p_user: userId })); },
+      // Members suggest a photo of their own bottle as the catalog picture; an admin approves it.
+      async suggestPhoto(perfumeId, file) {
+        if (!file) fail("Choose a photo first.");
+        const url = await uploadPhoto(file);
+        check(await sb.from("photo_suggestions").insert({ perfume_id: Number(perfumeId), suggested_by: me(), image_url: url }));
+      },
+      async myPendingPhoto(perfumeId) {
+        if (!uid) return null;
+        return check(await sb.from("photo_suggestions").select("id, image_url, created_at").eq("perfume_id", Number(perfumeId)).eq("suggested_by", uid).eq("status", "pending").limit(1).maybeSingle());
+      },
+      async listPhotoSuggestions() {
+        return check(await sb.from("photo_suggestions").select("*, perfume:perfumes(*), suggester:profiles!photo_suggestions_suggested_by_fkey(id,display_name)").eq("status", "pending").order("created_at"));
+      },
+      async reviewPhotoSuggestion(id, approve) { check(await sb.rpc("admin_review_photo_suggestion", { p_id: Number(id), p_approve: !!approve })); },
 
       async isAdmin() { if (!uid) return false; const p = await this.getProfile(uid); return !!p?.is_admin; },
       async listPendingPerfumes() {

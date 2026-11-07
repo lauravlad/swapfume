@@ -120,6 +120,7 @@
   function avatar(p, cls = "") {
     const name = p?.display_name || "?";
     const colors = ["#8C3B4A", "#7A5A2B", "#4F6B57", "#5E4F7A", "#8A4F3A", "#3F5E6B"];
+    if (p?.avatar_url) return html`<span class="avatar has-photo ${cls}" aria-hidden="true"><img src="${p.avatar_url}" alt="" loading="lazy"></span>`;
     return html`<span class="avatar ${cls}" style="background:${colors[hash(p?.id || name) % colors.length]}" aria-hidden="true">${name.trim().charAt(0).toUpperCase()}</span>`;
   }
   function trust(st) {
@@ -141,7 +142,7 @@
     const p = i.perfume;
     const art = i.photo_url ? html`<img src="${i.photo_url}" alt="Photo of ${pTitle(p)}" loading="lazy">` : bottleSvg(p, i.size);
     const inner = html`
-      <div class="art">${art}</div>
+      <div class="art" style="--tint:${tint(p)}">${art}</div>
       <div class="corner"><span class="pill ${i.size === "full" ? "rose" : i.size === "decant" ? "gold" : ""}">${SIZE_LABEL[i.size]}</span></div>
       <div class="body">
         <span class="brand">${p?.brand}</span>
@@ -194,6 +195,44 @@
     function pick(p) { close(); input.value = ""; onPick(p); }
   }
 
+  // ---------- Photo picker: a big, obvious button with a preview ----------
+  const CAMERA = raw(`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13.2" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`);
+  function photoPicker(name, currentUrl) {
+    return html`<label class="photo-pick">
+      <input type="file" name="${name}" accept="image/*" class="visually-hidden">
+      <span class="photo-prev">${currentUrl ? html`<img src="${currentUrl}" alt="">` : CAMERA}</span>
+      <span class="photo-text"><b data-ptitle>${currentUrl ? "Change photo" : "Add a photo"}</b><span class="small muted" data-pname>Take one or choose from your photos</span></span></label>`;
+  }
+  function bindPhotoPicker(root) {
+    $$(".photo-pick input[type=file]", root).forEach((inp) => inp.addEventListener("change", () => {
+      const f = inp.files[0], box = inp.closest(".photo-pick");
+      if (!f) return;
+      $(".photo-prev", box).innerHTML = val(html`<img src="${URL.createObjectURL(f)}" alt="">`);
+      $("[data-ptitle]", box).textContent = "Photo added";
+      $("[data-pname]", box).textContent = "Tap to change it";
+      box.classList.add("has-photo");
+    }));
+  }
+
+  // Members suggest a photo of their own bottle as the perfume's catalog picture.
+  function photoSuggestDialog(p) {
+    openModal(html`<form class="dlg" id="phForm"><h3>Add a photo of ${p.name}</h3>
+      <p class="muted small">Share a photo of <b>your own bottle</b>. An admin checks every photo; once approved it becomes this perfume's picture for everyone, with “Photo by ${state.profile?.display_name}”.</p>
+      <div class="field">${photoPicker("ph")}</div>
+      <p class="hint">Tips: daylight, a plain background, the whole bottle in view. No people, addresses or price tags.</p>
+      <div class="field"><label class="switch"><input type="checkbox" id="phOwn" required> This is my own photo of a bottle I own — not from a shop, brand or website.</label></div>
+      <div class="dlg-actions"><button type="button" class="btn secondary" data-close>Cancel</button><button class="btn" id="phSend">Send photo</button></div></form>`,
+    (m) => {
+      bindPhotoPicker(m);
+      $("#phForm", m).addEventListener("submit", (e) => {
+        e.preventDefault();
+        const file = $("input[name=ph]", m).files[0];
+        if (!file) { toast("Choose a photo first.", "error"); return; }
+        run($("#phSend", m), async () => { await api.suggestPhoto(p.id, file); modal.close(); toast("Thank you! An admin will check your photo."); route(); });
+      });
+    });
+  }
+
   // ---------- Item form (add / edit) ----------
   function itemForm(existing, presetPerfume) {
     let chosen = existing?.perfume || presetPerfume || null;
@@ -209,7 +248,7 @@
         <div><label for="fill">Amount left: <span id="fillOut">${it.fill_pct}</span>%</label><input id="fill" name="fill_pct" type="range" min="5" max="100" step="5" value="${it.fill_pct}" style="width:100%;accent-color:var(--accent);min-height:46px"></div>
       </div>
       <div class="field"><label class="switch"><input type="checkbox" name="tradeable" ${it.tradeable ? raw("checked") : ""}> I'm open to trading this</label></div>
-      <div class="field"><label for="photo">Photo of your bottle <span class="muted">(optional, builds trust)</span></label><input id="photo" name="photo" type="file" accept="image/*"></div>
+      <div class="field"><div class="label">Photo of your bottle <span class="muted">(optional, builds trust)</span></div>${photoPicker("photo", existing?.photo_url)}</div>
       <div class="field"><label for="note">Note <span class="muted">(optional)</span></label><input id="note" name="note" type="text" maxlength="300" value="${it.note}" placeholder="Batch, box, how it was stored…"></div>
       <div class="dlg-actions">
         ${existing ? html`<button type="button" class="btn danger" id="delItem" style="margin-right:auto">Remove</button>` : ""}
@@ -223,6 +262,7 @@
         } else perfumePicker(host, (p) => { chosen = p; drawPick(); });
       };
       drawPick();
+      bindPhotoPicker(m);
       $("#fill", m).addEventListener("input", (e) => ($("#fillOut", m).textContent = e.target.value));
       $("#itemForm", m).addEventListener("submit", (e) => {
         e.preventDefault();
@@ -563,18 +603,21 @@
   async function pagePerfume(id) {
     const p = await api.getPerfume(id);
     if (!p) return setView(html`<div class="empty"><h3>Perfume not found</h3></div>`);
-    const [items, wishes, mineW, memberPhoto] = await Promise.all([
+    const [items, wishes, mineW, memberPhoto, myPhoto] = await Promise.all([
       api.listItems({ tradeableOnly: true, perfumeIds: [p.id], excludeOwnerId: state.uid }),
-      api.listWishes({ perfumeIds: [p.id] }), api.listWishes({ userId: state.uid }), api.latestMemberPhoto(p.id)]);
+      api.listWishes({ perfumeIds: [p.id] }), api.listWishes({ userId: state.uid }), api.latestMemberPhoto(p.id),
+      api.myPendingPhoto(p.id).catch(() => null)]);
     const onMyList = mineW.find((w) => w.perfume_id === p.id);
     const isAdmin = !!state.profile?.is_admin;
     // Picture: admin-set catalog photo (with rights) > newest member photo > drawn bottle.
     let pic, caption = "";
-    if (p.image_url) { pic = html`<img src="${p.image_url}" alt="${pTitle(p)}">`; caption = p.image_credit ? `Photo: ${p.image_credit}` : "Catalog photo"; }
+    if (p.image_url) { pic = html`<img src="${p.image_url}" alt="${pTitle(p)}">`; caption = p.image_credit ? (/^photo\b/i.test(p.image_credit) ? p.image_credit : `Photo: ${p.image_credit}`) : "Catalog photo"; }
     else if (memberPhoto) { pic = html`<img src="${memberPhoto.photo_url}" alt="A member's bottle of ${pTitle(p)}">`; caption = `Member photo by ${memberPhoto.owner?.display_name || "a member"}`; }
     else { pic = bottleSvg(p, "full"); caption = "Illustration"; }
     setView(html`<div class="card perfume-hero">
-        <figure class="hero-pic">${pic}<figcaption>${caption}</figcaption></figure>
+        <div class="hero-side"><figure class="hero-pic" style="--tint:${tint(p)}">${pic}<figcaption>${caption}</figcaption></figure>
+          ${myPhoto ? html`<p class="small muted center" style="margin:6px 0 0">Your photo is waiting for an admin to approve it.</p>`
+            : p.status === "approved" ? html`<button class="btn small ${p.image_url ? "ghost" : "secondary"} photo-cta" id="addPhoto">${CAMERA}<span>${p.image_url ? "Suggest a better photo" : "Be the first to add a photo"}</span></button>` : ""}</div>
         <div><div class="brand">${p.brand}</div><h1 style="margin:2px 0">${p.name}</h1>
           <p class="muted" style="margin:0 0 8px">${p.concentration} · ${p.year || "Year unknown"}${p.status !== "approved" ? " · awaiting approval" : ""}</p>
           ${p.perfumers?.length ? html`<p style="margin:0 0 6px">Perfumer: ${perfumerLinks(p)}</p>` : ""}
@@ -600,6 +643,7 @@
     $("#iHave").addEventListener("click", () => itemForm(null, p));
     const iw = $("#iWant"); if (iw) iw.addEventListener("click", () => run(iw, async () => { await api.addWish(p.id); toast("Added to your wishlist."); route(); }));
     $("#suggestNotes").addEventListener("click", () => notesDialog(p));
+    const ap = $("#addPhoto"); if (ap) ap.addEventListener("click", () => photoSuggestDialog(p));
     perfumeReviews(p, $("#prBox"));
     const yf = $("#yearForm");
     if (yf) yf.addEventListener("submit", (e) => { e.preventDefault(); run($("#yearSave"), async () => { await api.setPerfumeYear(p.id, $("#yearIn").value); toast("Year saved."); route(); }); });
@@ -743,7 +787,7 @@
         ${p.is_banned ? html`<div class="notice rose" style="margin-top:12px">This account has been suspended.</div>` : ""}
         ${p.bio ? html`<p style="margin-top:14px">${p.bio}</p>` : ""}
         ${iBlocked ? html`<div class="notice" style="margin-top:12px">You blocked ${p.display_name}. You don't see each other's listings or wishlists, and neither of you can propose a swap. They aren't told.</div>` : ""}
-        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${!p.is_banned && !iBlocked && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}`}</div></div>
+        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${!p.is_banned && !iBlocked && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}${state.profile?.is_admin && p.avatar_url ? html`<button class="btn ghost" id="clearAvatar">Remove profile photo <span class="pill gold">Admin</span></button>` : ""}`}</div></div>
       ${iBlocked ? "" : html`<h2>${isMe ? "Collection" : "Open to trade"}</h2>
       ${shown.length ? html`<div class="grid">${shown.map((i) => html`<div>${itemTile(i)}${isMe ? "" : html`<button class="btn small ghost" data-repitem="${i.id}" style="margin-top:4px">Report listing</button>`}</div>`)}</div>` : html`<p class="muted">Nothing listed for trade right now.</p>`}
       <h2>Wishlist</h2>
@@ -751,6 +795,8 @@
       <h2>Reviews</h2>
       ${reviews.length ? html`<ul class="list card">${reviews.map((r) => html`<li><div class="row between"><span class="stars" aria-label="${r.rating} out of 5 stars">${starsText(r.rating)}</span><span class="small muted">${r.reviewer?.display_name || "Former member"} · ${fmtDate(r.created_at)}</span></div>${r.comment ? html`<p style="margin:4px 0 0">${r.comment}</p>` : ""}</li>`)}</ul>` : html`<p class="muted">No reviews yet. Reviews can only be left by swap partners after a completed swap.</p>`}`);
     const ru = $("#repUser"); if (ru) ru.addEventListener("click", () => reportDialog({ targetUserId: id, what: p.display_name }));
+    const ca = $("#clearAvatar");
+    if (ca) ca.addEventListener("click", async () => { if (await confirmBox(`Remove ${p.display_name}'s profile photo?`, "Use this for photos that break the rules. They can upload a new one.", "Remove")) run(null, async () => { await api.adminClearAvatar(id); toast("Profile photo removed."); route(); }); });
     const bu = $("#blockUser");
     if (bu) bu.addEventListener("click", async () => {
       if (!(await confirmBox(`Block ${p.display_name}?`, "You won't see each other's listings or wishlists, and neither of you can propose a swap. Open proposals between you are withdrawn; swaps already accepted carry on so packages can arrive. They aren't told. You can unblock any time from Me.", "Block"))) return;
@@ -874,6 +920,10 @@
     setView(html`<div class="page-head"><div class="row between" style="align-items:center;flex-wrap:nowrap;gap:12px"><h1 style="margin:0">My profile</h1><button class="btn secondary small" data-signout>Sign out</button></div>
       <p class="small muted" style="margin:4px 0 6px">Signed in as <b>${p.display_name}</b></p><p>Your name, city and bio are visible to members. Your address is private.</p></div>
       <form class="card" id="profForm"><h3>Public profile</h3>
+        <div class="field avatar-edit">${avatar(p, "xl")}<div class="grow"><div class="label">Profile photo <span class="muted">(optional)</span></div>
+          <div class="row" style="gap:8px;margin-top:6px"><label class="btn small secondary avatar-upload">${CAMERA}<span>${p.avatar_url ? "Change photo" : "Add a photo"}</span><input type="file" id="avFile" accept="image/*" class="visually-hidden"></label>
+          ${p.avatar_url ? html`<button type="button" class="btn small ghost" id="avRemove">Remove</button>` : ""}</div>
+          <p class="hint" style="margin-top:6px">Shown next to your name. A friendly face or your favourite bottle — no addresses or other people.</p></div></div>
         <div class="field"><label for="pn">Display name</label><input id="pn" type="text" required maxlength="40" value="${p.display_name}"></div>
         <div class="two field"><div><label for="pc">City</label><input id="pc" type="text" maxlength="80" value="${p.city}"></div><div><label for="pk">Country</label><input id="pk" type="text" maxlength="80" value="${p.country || CFG.LAUNCH_COUNTRY}"></div></div>
         <div class="field"><label for="pb">Short bio</label><textarea id="pb" maxlength="500" placeholder="What you love to wear, how you pack…">${p.bio}</textarea></div>
@@ -893,6 +943,8 @@
       ${api.mode === "demo" ? html`<div class="card"><h3>Demo tools</h3><p class="muted small">Only in demo mode. Step into another pretend member to answer your proposal, ship, and review.</p>
         <div class="row">${api.demoUsers().filter((u) => u.id !== state.uid).map((u) => html`<button class="btn small secondary" data-as="${u.id}">${u.display_name}</button>`)}</div>
         <p style="margin-top:12px"><button class="btn small danger" id="resetDemo">Reset demo data</button></p></div>` : ""}`);
+    $("#avFile").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) run(null, async () => { state.profile = await api.setMyAvatar(f); toast("Profile photo saved."); route(); }); });
+    const avr = $("#avRemove"); if (avr) avr.addEventListener("click", () => run(avr, async () => { state.profile = await api.setMyAvatar(null); toast("Profile photo removed."); route(); }));
     $("#profForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveProf"), async () => {
       state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: $("#pk").value, bio: $("#pb").value }); toast("Profile saved."); }); });
     $("#addrForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveAddr"), async () => { await api.saveMyAddress({ full_name: $("#an").value, address: $("#aa").value }); toast("Address saved."); }); });
@@ -977,7 +1029,7 @@
     if (!state.profile.is_admin) return setView(html`<div class="empty"><h3>Admins only</h3></div>`);
     const tab = params.get("tab") || "catalog";
     setView(html`<div class="page-head"><div class="eyebrow">Admin</div><h1>Moderation</h1></div>
-      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["notes", "Notes corrections"], ["import", "Import CSV"], ["reports", "Reports"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
+      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["notes", "Notes corrections"], ["photos", "Photos"], ["import", "Import CSV"], ["reports", "Reports"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
     $$("[data-t]").forEach((b) => b.addEventListener("click", () => go(`/admin?tab=${b.dataset.t}`)));
     const ab = $("#ab");
     if (tab === "catalog") {
@@ -1018,6 +1070,16 @@
       $$("[data-res]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.resolveReport(b.dataset.res); route(); })));
       $$("[data-hide]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setItemHidden(b.dataset.hide, b.dataset.h === "true"); route(); })));
       $$("[data-hider]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setPerfumeReviewHidden(b.dataset.hider, b.dataset.h === "true"); route(); })));
+    } else if (tab === "photos") {
+      const rows = await api.listPhotoSuggestions();
+      ab.innerHTML = val(rows.length ? html`<p class="muted small">Approve only real photos of the bottle — no shop or brand pictures, no people or personal details. Approving replaces the perfume's current picture.</p>
+        <div class="grid photo-queue">${rows.map((s) => html`<article class="tile"><div class="art photo-art"><img src="${s.image_url}" alt="Suggested photo of ${pTitle(s.perfume)}"></div>
+          <div class="body"><span class="brand">${s.perfume?.brand}</span><a class="pname" href="#/perfume/${s.perfume_id}">${s.perfume?.name}</a>
+            <span class="meta">from ${s.suggester?.display_name || "a member"} · ${fmtDate(s.created_at)}${s.perfume?.image_url ? " · replaces current photo" : ""}</span>
+            <div class="actions"><button class="btn small" data-pok="${s.id}">Approve</button><button class="btn small secondary" data-pno="${s.id}">Reject</button></div></div></article>`)}</div>`
+        : html`<div class="empty"><p>No photos waiting.</p></div>`);
+      $$("[data-pok]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.reviewPhotoSuggestion(b.dataset.pok, true); toast("Photo approved."); route(); })));
+      $$("[data-pno]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.reviewPhotoSuggestion(b.dataset.pno, false); toast("Photo rejected."); route(); })));
     } else if (tab === "import") {
       adminImport(ab);
     } else {

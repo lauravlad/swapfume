@@ -301,3 +301,140 @@ table.admin th { font-weight: 500; color: var(--muted); }
 .chk { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 400; min-height: 40px; }
 li.is-hidden { opacity: .6; }
 code { font-size: .85em; background: #F3ECE4; padding: 1px 4px; border-radius: 4px; }
+
+/* =====================================================================
+   Photos: picker, avatars, photo suggestions
+   ===================================================================== */
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.label { font-weight: 500; font-size: .92rem; margin-bottom: 6px; }
+.photo-pick { display: flex; align-items: center; gap: 14px; padding: 12px; margin: 0; border: 1.5px dashed #D6C3B3; border-radius: 16px; background: var(--bg); cursor: pointer; transition: border-color .15s, background .15s; }
+.photo-pick:hover { border-color: var(--accent); background: var(--accent-soft); }
+.photo-pick:focus-within { outline: 3px solid var(--gold); outline-offset: 2px; }
+.photo-pick.has-photo { border-style: solid; border-color: var(--accent); }
+.photo-prev { width: 64px; height: 64px; border-radius: 14px; background: var(--surface); display: grid; place-items: center; overflow: hidden; flex: none; color: var(--accent); box-shadow: var(--shadow); }
+.photo-prev img { width: 100%; height: 100%; object-fit: cover; }
+.photo-prev svg { width: 30px; height: 30px; }
+.photo-text { display: flex; flex-direction: column; gap: 2px; font-weight: 400; }
+.photo-text b { color: var(--accent); font-weight: 600; }
+.photo-cta, .avatar-upload { gap: 6px; }
+.photo-cta svg, .avatar-upload svg { width: 18px; height: 18px; flex: none; }
+.avatar-upload { margin: 0; }
+.avatar.has-photo { background: var(--surface-2); overflow: hidden; }
+.avatar.has-photo img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.xl { width: 88px; height: 88px; font-size: 2.4rem; }
+.avatar-edit { display: flex; gap: 16px; align-items: center; }
+.hero-side { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.photo-queue .photo-art img { object-fit: cover; }
+
+/* =====================================================================
+   Design refresh — "maison" look: ivory, deep rose, champagne gold
+   ===================================================================== */
+:root {
+  --bg: #FBF7F2;
+  --surface-2: #F3EAE1;
+  --ink: #261C1A;
+  --line: #EADFD4;
+  --accent: #862F44;
+  --accent-2: #A54A5E;
+  --gold: #9C7530;
+  --champagne: #E9D7B5;
+  --radius: 20px;
+  --shadow: 0 1px 1px rgba(70, 35, 30, .04), 0 10px 30px -12px rgba(90, 40, 35, .18);
+  --shadow-lift: 0 2px 4px rgba(70, 35, 30, .05), 0 22px 40px -18px rgba(110, 45, 50, .32);
+}
+body {
+  background:
+    radial-gradient(1200px 600px at 100% -10%, rgba(233, 215, 181, .35), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(134, 47, 68, .07), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  letter-spacing: .005em;
+}
+h1 { font-size: 2.5rem; letter-spacing: -.005em; }
+h2 { font-size: 1.75rem; }
+h2::after { content: ""; display: block; width: 36px; height: 2px; margin-top: 8px; background: linear-gradient(90deg, var(--gold), transparent); border-radius: 2px; }
+.card h3, .dlg h3 { font-size: 1.4rem; }
+::selection { background: var(--champagne); }
+
+/* Top bar: frosted, with the app mark */
+.topbar { background: rgba(251, 247, 242, .78); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid rgba(234, 223, 212, .8); padding: 10px 20px; }
+.wordmark { display: inline-flex; align-items: center; gap: 10px; font-size: 1.85rem; }
+.wordmark::after { display: none; }
+.wordmark-mark { width: 34px; height: 34px; border-radius: 10px; box-shadow: 0 4px 12px -4px rgba(134, 47, 68, .5); }
+.topnav a { padding: 8px 14px; }
+.topnav a.active { background: var(--ink); color: #fff; }
+
+/* Bottom tab bar (phones): frosted glass with an active pill */
+.tabbar { background: rgba(255, 255, 255, .82); backdrop-filter: saturate(1.4) blur(16px); -webkit-backdrop-filter: saturate(1.4) blur(16px); border-top: 1px solid rgba(234, 223, 212, .9); }
+.tabbar a.active::before { content: ""; position: absolute; top: 2px; width: 44px; height: 30px; border-radius: 999px; background: var(--accent-soft); z-index: -1; }
+.tabbar a { isolation: isolate; }
+
+/* Page headers */
+.page-head { margin-bottom: 22px; }
+.page-head h1 { margin-bottom: 6px; }
+.eyebrow { color: var(--gold); letter-spacing: .18em; }
+
+/* Cards & tiles */
+.card { border-color: rgba(234, 223, 212, .9); padding: 20px; }
+.card + .card { margin-top: 16px; }
+.tile { border-color: rgba(234, 223, 212, .9); transition: transform .2s ease, box-shadow .2s ease; }
+.tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
+.tile .art { background: radial-gradient(120% 90% at 50% 100%, color-mix(in srgb, var(--tint, #E8C4C0) 55%, #fff) 0%, #FBF5EF 70%); }
+.tile .art svg { filter: drop-shadow(0 10px 12px rgba(60, 30, 25, .16)); transition: transform .3s ease; }
+.tile:hover .art svg { transform: translateY(-3px) scale(1.03); }
+.tile .art img { transition: transform .4s ease; }
+.tile:hover .art img { transform: scale(1.04); }
+.tile .body { padding: 12px 14px 14px; }
+.pname { font-size: 1.25rem; }
+
+/* Buttons */
+.btn { background: linear-gradient(180deg, var(--accent-2), var(--accent)); box-shadow: 0 6px 16px -8px rgba(134, 47, 68, .65), inset 0 1px 0 rgba(255,255,255,.18); letter-spacing: .01em; }
+.btn:hover { background: linear-gradient(180deg, #96394F, #741F35); }
+.btn.secondary, .btn.ghost, .btn.danger { box-shadow: none; }
+.btn.secondary { background: rgba(255,255,255,.9); border-color: #E2D3C6; }
+.btn.ghost { background: transparent; }
+.btn.danger { background: var(--surface); }
+
+/* Inputs */
+input[type=text], input[type=email], input[type=password], input[type=number], input[type=search], input[type=date], select, textarea { border-color: #E2D3C6; border-radius: 12px; background: #fff; }
+input[type=date] { width: 100%; font: 16px var(--sans); color: var(--ink); border: 1px solid #E2D3C6; border-radius: 12px; padding: 11px 12px; min-height: 46px; background: #fff; }
+
+/* Welcome page */
+.welcome { position: relative; }
+.hero h1 { font-size: 3.4rem; letter-spacing: -.01em; }
+.hero h1 em { background: linear-gradient(90deg, var(--accent), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: .08em; }
+.hero-art { display: inline-flex; position: relative; padding: 34px 30px 20px; border-radius: 200px 200px 28px 28px; background: radial-gradient(90% 70% at 50% 100%, rgba(233, 215, 181, .9), rgba(243, 234, 225, .6) 60%, transparent); }
+.hero-art svg { height: 140px; filter: drop-shadow(0 14px 16px rgba(70, 35, 30, .18)); }
+.welcome > .card { background: rgba(255, 255, 255, .86); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow-lift); padding: 24px; }
+@media (max-width: 560px) { .hero h1 { font-size: 2.7rem; } }
+
+/* Perfume page: arch-shaped picture frame tinted by scent family */
+.perfume-hero { padding: 22px; }
+@media (min-width: 560px) { .perfume-hero { grid-template-columns: 240px 1fr; gap: 28px; } }
+.hero-pic img, .hero-pic svg { max-width: 240px; height: 280px; border-radius: 140px 140px 22px 22px; background: radial-gradient(110% 80% at 50% 100%, color-mix(in srgb, var(--tint, #E8C4C0) 60%, #fff), #FBF5EF 75%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.6), var(--shadow); }
+.hero-pic svg { padding: 34px 40px 26px; filter: drop-shadow(0 14px 14px rgba(60, 30, 25, .15)); }
+.perfume-hero h1 { font-size: 2.6rem; }
+
+/* Match cards, swaps */
+.match.card { transition: box-shadow .2s ease; }
+.match.card:hover { box-shadow: var(--shadow-lift); }
+.side { background: linear-gradient(180deg, #FBF6F0, #F7EFE7); }
+.avatar { box-shadow: 0 0 0 3px #fff, 0 4px 12px -4px rgba(60, 30, 25, .35); }
+
+/* Pills, chips, notes */
+.pill.gold { background: linear-gradient(180deg, #F7EEDB, #F1E3C6); }
+.note { background: #fff; border-color: #EADBCB; }
+.layer { background: linear-gradient(180deg, #FBF6F0, #F6EDE4); }
+
+/* Tabs */
+.tabs { border-bottom-color: rgba(234, 223, 212, .9); }
+.tabs button[aria-selected=true], .tablink[aria-selected=true] { border-bottom-width: 2px; font-weight: 600; }
+
+/* Empty states & footer */
+.empty { background: rgba(255,255,255,.6); border-color: #E6D6C8; }
+.site-footer { padding-top: 24px; }
+.site-footer::before { content: ""; display: block; width: 60px; height: 1px; margin: 0 auto 16px; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+
+/* Dialogs */
+dialog { border-radius: 24px; }
+dialog::backdrop { background: rgba(38, 28, 26, .45); backdrop-filter: blur(3px); }

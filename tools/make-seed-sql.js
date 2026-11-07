@@ -162,6 +162,8 @@ catChunks.forEach((c, k) => parts.push([`catalog_${k + 1}_of_${catChunks.length}
 const pfc = chunkBy(pfRows, LIMIT - 2000);
 pfc.forEach((c, k) => parts.push([`perfumers_${k + 1}_of_${pfc.length}`, head(`perfumer names part ${k + 1} of ${pfc.length}`, 'Fills in perfumers only where a perfume has none yet.') +
   `update public.perfumes p set perfumers = v.perfumers\n  from (values\n${c.join(',\n')}\n  ) as v(brand, name, concentration, perfumers)\n where p.norm_key = public.norm_text(v.brand) || '|' || public.norm_text(v.name) || '|' || public.norm_text(v.concentration)\n   and cardinality(p.perfumers) = 0;\n`]));
+// Migrations added after the first live setup go last, so earlier file numbers never change.
+parts.push(['photo_suggestions', head('010 members suggest catalog photos; profile photos', 'Same as supabase/migrations/010_photo_suggestions.sql.') + mig('010_photo_suggestions.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);

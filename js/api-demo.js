@@ -12,7 +12,7 @@
   const clone = (x) => JSON.parse(JSON.stringify(x));
 
   function freshDb() {
-    const db = { version: 4, seq: 10000, users: [], profiles: [], blocks: [], perfumeReviews: [], reviewVotes: [], addresses: [], perfumes: [], items: [], wishes: [], swaps: [], swapItems: [], reviews: [], reports: [], noteSuggestions: [] };
+    const db = { version: 4, seq: 10000, users: [], profiles: [], blocks: [], perfumeReviews: [], reviewVotes: [], addresses: [], perfumes: [], items: [], wishes: [], swaps: [], swapItems: [], reviews: [], reports: [], noteSuggestions: [], photoSuggestions: [] };
     const seenKeys = new Set();
     window.CATALOG_SEED.forEach((row, i) => {
       const k = Util.perfumeKey(row[0], row[1], row[2]);
@@ -142,6 +142,7 @@
       if (p.image_url === undefined) { p.image_url = null; p.image_credit = null; }
     });
     db.noteSuggestions = db.noteSuggestions || [];
+    if (!db.photoSuggestions) { db.photoSuggestions = []; changed = true; }
     // Launch update: blocks list, 18+ confirmation (demo members count as confirmed),
     // and any catalog perfumes added since this demo data was made.
     if (!db.blocks) { db.blocks = []; changed = true; }
@@ -176,7 +177,7 @@
 
   const me = () => uid || fail("Please sign in first.");
   const prof = (id) => db.profiles.find((p) => p.id === id) || null;
-  const lite = (id) => { const p = prof(id); return p && { id: p.id, display_name: p.display_name, city: p.city, country: p.country, is_banned: p.is_banned }; };
+  const lite = (id) => { const p = prof(id); return p && { id: p.id, display_name: p.display_name, city: p.city, country: p.country, is_banned: p.is_banned, avatar_url: p.avatar_url || null }; };
   const perf = (id) => db.perfumes.find((p) => p.id === id) || null;
   const active = () => { const p = prof(me()); if (!p || p.is_banned || !p.adult_confirmed_at) fail("Your account cannot do this right now."); };
   // Same rules as migration 008: either side blocking hides listings/wishlists and stops swaps.
@@ -294,6 +295,7 @@
       db.addresses = db.addresses.filter((a) => a.user_id !== v);
       db.blocks = db.blocks.filter((b) => b.blocker_id !== v && b.blocked_id !== v);
       db.noteSuggestions = db.noteSuggestions.filter((n) => n.suggested_by !== v);
+      db.photoSuggestions = db.photoSuggestions.filter((n) => n.suggested_by !== v || n.status === "approved");
       db.reports = db.reports.filter((r) => r.reporter_id !== v && r.target_user_id !== v);
       db.perfumes.forEach((p) => { if (p.requested_by === v) p.requested_by = null; });
       db.profiles = db.profiles.filter((p) => p.id !== v);
@@ -529,6 +531,37 @@
       if (file) { p.image_url = (await Util.resizeImage(file, 800, 0.8)).dataUrl; p.image_credit = String(credit || "").slice(0, 200); }
       else { p.image_url = null; p.image_credit = null; }
       save();
+    },
+    // Profile photo (avatar). file = null removes it.
+    async setMyAvatar(file) {
+      const p = prof(me());
+      p.avatar_url = file ? (await Util.resizeImage(file, 300, 0.8)).dataUrl : null;
+      save(); return clone(p);
+    },
+    async adminClearAvatar(userId) { adminOnly(); const p = prof(userId); if (p) { p.avatar_url = null; save(); } },
+    // Members suggest a photo of their own bottle as the catalog picture; an admin approves it.
+    async suggestPhoto(perfumeId, file) {
+      active();
+      const p = perf(Number(perfumeId)); if (!p || p.status !== "approved") fail("Perfume not found.");
+      if (!file) fail("Choose a photo first.");
+      const image_url = (await Util.resizeImage(file, 800, 0.8)).dataUrl;
+      db.photoSuggestions.push({ id: ++db.seq, perfume_id: p.id, suggested_by: uid, image_url, status: "pending", created_at: now() });
+      save();
+    },
+    async myPendingPhoto(perfumeId) {
+      if (!uid) return null;
+      return clone(db.photoSuggestions.find((s) => s.perfume_id === Number(perfumeId) && s.suggested_by === uid && s.status === "pending") || null);
+    },
+    async listPhotoSuggestions() {
+      adminOnly();
+      return db.photoSuggestions.filter((s) => s.status === "pending").map((s) => ({ ...clone(s), perfume: clone(perf(s.perfume_id)), suggester: lite(s.suggested_by) }));
+    },
+    async reviewPhotoSuggestion(id, approve) {
+      adminOnly();
+      const s = db.photoSuggestions.find((x) => x.id === Number(id) && x.status === "pending");
+      if (!s) return;
+      if (approve) { const p = perf(s.perfume_id); p.image_url = s.image_url; p.image_credit = "Photo by " + (prof(s.suggested_by)?.display_name || "a member"); }
+      s.status = approve ? "approved" : "rejected"; save();
     },
 
     // Perfume reviews (stars + tags), separate from member-to-member swap reviews.
