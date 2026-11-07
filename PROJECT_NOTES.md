@@ -36,7 +36,7 @@ iPhone app (ios/) ─ bundles the same files ─► same Supabase project
 
 ## Database status
 
-Run on the live project on 2026-11-05: `supabase/migrations/001`–`004`, then `supabase/live-update/01`–`10` (the SQL Editor can't take big pastes, so 005–009 are split into files under 120 KB). The check query gave **2758 perfumes | 114 classics | 362 with perfumer | 656 with notes | 0 duplicates**.
+Run on the live project on 2026-11-05: `supabase/migrations/001`–`004`, then `supabase/live-update/01`–`10` (and `11` on 2026-11-07) (the SQL Editor can't take big pastes, so 005–009 are split into files under 120 KB). The check query gave **2758 perfumes | 114 classics | 362 with perfumer | 656 with notes | 0 duplicates**.
 
 Future database changes: add a new migration, run `node tools/make-seed-sql.js`, then run only the new files in the SQL Editor.
 
@@ -54,6 +54,7 @@ Add `?demo=1` to any address (for example `https://swapfume.com/?demo=1`, or loc
   - Published on GitHub Pages, connected to Supabase, pointed swapfume.com at it, email forwarding set up.
   - iPhone project prepared.
 - **2026-11-07:** sign-out made easy to find (top and bottom of **Me**); added the `?demo=1` switch.
+- **2026-11-07:** members suggest catalog photos of their own bottles (Admin tools → Photos to approve), profile photos (avatars), a clearer photo picker, and a refreshed design. Database: migration 010 / `live-update/11_photo_suggestions.sql`, run on the live project.
 
 ## Still to do
 
