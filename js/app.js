@@ -15,7 +15,10 @@
 
   // ---------- Choose the data layer ----------
   let api;
-  if (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY) {
+  // "?demo=1" in the address runs the demo (pretend members, data only in this browser),
+  // even on the live site — handy for testing changes and showing the app.
+  const forceDemo = new URLSearchParams(location.search).has("demo");
+  if (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && !forceDemo) {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
       s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js";
@@ -868,7 +871,8 @@
 
   async function pageMe() {
     const p = state.profile, [addr, blocks] = await Promise.all([api.getMyAddress(), api.listBlocks()]);
-    setView(html`<div class="page-head"><h1>My profile</h1><p>Your name, city and bio are visible to members. Your address is private.</p></div>
+    setView(html`<div class="page-head"><div class="row between" style="align-items:center;flex-wrap:nowrap;gap:12px"><h1 style="margin:0">My profile</h1><button class="btn secondary small" data-signout>Sign out</button></div>
+      <p class="small muted" style="margin:4px 0 6px">Signed in as <b>${p.display_name}</b></p><p>Your name, city and bio are visible to members. Your address is private.</p></div>
       <form class="card" id="profForm"><h3>Public profile</h3>
         <div class="field"><label for="pn">Display name</label><input id="pn" type="text" required maxlength="40" value="${p.display_name}"></div>
         <div class="two field"><div><label for="pc">City</label><input id="pc" type="text" maxlength="80" value="${p.city}"></div><div><label for="pk">Country</label><input id="pk" type="text" maxlength="80" value="${p.country || CFG.LAUNCH_COUNTRY}"></div></div>
@@ -879,11 +883,12 @@
         <div class="field"><label for="an">Name on the package</label><input id="an" type="text" required maxlength="120" autocomplete="name" value="${addr?.full_name || ""}"></div>
         <div class="field"><label for="aa">Mailing address</label><textarea id="aa" required minlength="5" maxlength="500" autocomplete="street-address" placeholder="Street, city, state, ZIP">${addr?.address || ""}</textarea></div>
         <div class="field"><button class="btn" id="saveAddr">Save address</button></div></form>
-      <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a><button class="btn ghost" id="signOut">Sign out</button></div></div>
+      <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a></div></div>
       <div class="card"><h3>Blocked members</h3>
         ${blocks.length ? html`<ul class="list">${blocks.map((b) => html`<li class="row between"><span>${avatar(b.blocked)} <a href="#/u/${b.blocked_id}">${b.blocked?.display_name || "Former member"}</a></span><button class="btn small ghost" data-unblock="${b.blocked_id}">Unblock</button></li>`)}</ul>`
           : html`<p class="muted small">Nobody. To block someone, open their profile and tap Block — you'll stop seeing each other and can't swap.</p>`}</div>
       <div class="card"><h3>Help &amp; legal</h3><div class="row"><a class="btn small secondary" href="#/support">Support</a><a class="btn small ghost" href="#/terms">Terms of Use</a><a class="btn small ghost" href="#/privacy">Privacy Policy</a></div></div>
+      <div class="card"><h3>Sign out</h3><p class="muted small">Sign out of Swapfume on this device. Your account, collection and swaps stay as they are.</p><button class="btn secondary" data-signout>Sign out</button></div>
       <div class="card danger-zone"><h3>Delete account</h3><p class="muted small">Permanently remove your account and your data from Swapfume.</p><button class="btn small danger" id="delAcct">Delete my account…</button></div>
       ${api.mode === "demo" ? html`<div class="card"><h3>Demo tools</h3><p class="muted small">Only in demo mode. Step into another pretend member to answer your proposal, ship, and review.</p>
         <div class="row">${api.demoUsers().filter((u) => u.id !== state.uid).map((u) => html`<button class="btn small secondary" data-as="${u.id}">${u.display_name}</button>`)}</div>
@@ -891,7 +896,7 @@
     $("#profForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveProf"), async () => {
       state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: $("#pk").value, bio: $("#pb").value }); toast("Profile saved."); }); });
     $("#addrForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveAddr"), async () => { await api.saveMyAddress({ full_name: $("#an").value, address: $("#aa").value }); toast("Address saved."); }); });
-    $("#signOut").addEventListener("click", () => api.signOut());
+    $$("[data-signout]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.signOut(); location.hash = "/"; toast("You're signed out."); })));
     $("#delAcct").addEventListener("click", deleteAccountDialog);
     $$("[data-unblock]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.unblockUser(b.dataset.unblock); toast("Unblocked."); route(); })));
     $$("[data-as]").forEach((b) => b.addEventListener("click", () => { api.demoSwitchUser(b.dataset.as); }));
