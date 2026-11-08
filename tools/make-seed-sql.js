@@ -168,6 +168,7 @@ parts.push(['location_meetups', head('011 ZIP-code location, distances, meeting 
 parts.push(['area_map', head('012 general-area map on profiles', 'Same as supabase/migrations/012_area_map.sql.') + mig('012_area_map.sql')]);
 parts.push(['gifts', head('013 gifts: give perfume with nothing asked back', 'Same as supabase/migrations/013_gifts.sql.') + mig('013_gifts.sql')]);
 parts.push(['forget_birthdate', head('014 do not keep dates of birth', 'Same as supabase/migrations/014_forget_birthdate.sql.') + mig('014_forget_birthdate.sql')]);
+parts.push(['duplicates', head('015 catch duplicate perfumes; admins can merge them', 'Same as supabase/migrations/015_duplicates.sql.') + mig('015_duplicates.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);

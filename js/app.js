@@ -1023,6 +1023,7 @@
       ${isAdmin ? html`<form class="card" id="yearForm"><h3>Release year <span class="pill gold">Admin</span></h3>
         <p class="muted small">Leave empty if unknown. Years before 2000 mark the perfume as a Classic. Only keep those if it's iconic and still sold.</p>
         <div class="row"><input id="yearIn" type="number" min="1700" max="2100" inputmode="numeric" value="${p.year ?? ""}" aria-label="Release year" style="max-width:140px"><button class="btn small" id="yearSave">Save year</button></div></form>` : ""}
+      ${isAdmin ? html`<div class="card"><div class="row between"><h3 style="margin:0">Duplicate? <span class="pill gold">Admin</span></h3><button class="btn small secondary" id="findDup">Find look-alikes</button></div><div id="dupBox"></div></div>` : ""}
       ${isAdmin ? html`<div class="card"><h3>Catalog photo <span class="pill gold">Admin</span></h3>
         <p class="muted small">Only use a photo you took yourself or have permission to use. Never copy brand or shop product photos.</p>
         <form id="imgForm"><div class="field"><input type="file" id="imgFile" accept="image/*" aria-label="Catalog photo file"></div>
@@ -1041,6 +1042,15 @@
     perfumeReviews(p, $("#prBox"), { focus: params?.get("review") === "1" });
     const yf = $("#yearForm");
     if (yf) yf.addEventListener("submit", (e) => { e.preventDefault(); run($("#yearSave"), async () => { await api.setPerfumeYear(p.id, $("#yearIn").value); toast("Year saved."); route(); }); });
+    const fd = $("#findDup");
+    if (fd) fd.addEventListener("click", () => run(fd, async () => {
+      const sim = (await api.similarPerfumes(p.brand, p.name, p.id)).filter((x) => x.status === "approved");
+      $("#dupBox").innerHTML = val(sim.length ? html`<ul class="dup-list">${sim.map((x) => html`<li><a href="#/perfume/${x.id}">${x.brand} · ${x.name}</a> <span class="muted small">${x.concentration || ""}</span>
+          <div class="row" style="margin-top:4px"><button class="btn small" data-into="${x.id}">Merge this page into it</button><button class="btn small secondary" data-from="${x.id}">Merge it into this page</button></div></li>`)}</ul>`
+        : html`<p class="muted small">No look-alikes found.</p>`);
+      $$("[data-into]", $("#dupBox")).forEach((b) => b.addEventListener("click", () => { const x = sim.find((s) => s.id === Number(b.dataset.into)); mergeDialog(p, x, () => go(`/perfume/${x.id}`)); }));
+      $$("[data-from]", $("#dupBox")).forEach((b) => b.addEventListener("click", () => { const x = sim.find((s) => s.id === Number(b.dataset.from)); mergeDialog(x, p, route); }));
+    }));
     const f = $("#imgForm");
     if (f) {
       f.addEventListener("submit", (e) => { e.preventDefault(); run($("#imgSave"), async () => {
@@ -1145,33 +1155,74 @@
   }
 
   async function pageRequest(params) {
+    const brands = await api.catalogBrands().catch(() => []);
+    const CONCS = ["Eau de Parfum", "Eau de Toilette", "Parfum", "Extrait de Parfum", "Eau de Cologne", "Perfume Oil / Attar", "Other / not sure"];
     setView(html`<div class="page-head"><h1>Suggest a perfume</h1><p>Can't find it in the catalog? Suggest it — an admin checks every request so the catalog stays tidy.</p></div>
       <form class="card" id="reqForm">
-        <div class="two"><div><label for="rb">Brand</label><input id="rb" type="text" required maxlength="80" value="${params.get("brand") || ""}"></div>
-        <div><label for="rn">Perfume name</label><input id="rn" type="text" required maxlength="120" value="${params.get("name") || ""}"></div></div>
-        <div class="two field"><div><label for="rc">Concentration</label><select id="rc">${["Eau de Parfum", "Eau de Toilette", "Parfum", "Extrait de Parfum", "Eau de Cologne", "Perfume Oil / Attar", "Other / not sure"].map((c) => html`<option>${c}</option>`)}</select></div>
+        <div class="two"><div><label for="rb">Brand</label><input id="rb" type="text" required maxlength="80" list="brandList" autocomplete="off" value="${params.get("brand") || ""}">
+          <datalist id="brandList">${brands.map((b) => html`<option value="${b}"></option>`)}</datalist></div>
+        <div><label for="rn">Perfume name</label><input id="rn" type="text" required maxlength="120" autocomplete="off" value="${params.get("name") || ""}"></div></div>
+        <div id="similar" class="field" aria-live="polite"></div>
+        <div class="two field"><div><label for="rc">Concentration</label><select id="rc">${CONCS.map((c) => html`<option>${c}</option>`)}</select></div>
         <div><label for="ry">Release year</label><input id="ry" type="number" min="1700" max="2100" inputmode="numeric" required></div></div>
+        <p class="hint" id="tidy"></p>
         <p class="hint">The catalog covers perfumes from 2000 onward, plus true classics from before 2000 that are still sold today.</p>
-        <div id="similar" class="field"></div>
         <div class="field"><button class="btn" id="reqBtn">Send suggestion</button></div>
       </form>`);
-    const checkSimilar = async () => {
-      const b = $("#rb").value, n = $("#rn").value;
-      if (!b.trim() || !n.trim()) { $("#similar").innerHTML = ""; return; }
-      const sim = await api.similarPerfumes(b, n);
-      $("#similar").innerHTML = val(sim.length ? html`<div class="notice">Already in the catalog: ${sim.map((p, k) => html`${k ? ", " : ""}<a href="#/perfume/${p.id}">${pTitle(p)} (${p.concentration})</a>`)}. Only suggest it if yours is a different concentration.</div>` : "");
+    let last = null, seq = 0, timer = null;
+    const lookup = async () => {
+      const b = $("#rb").value.trim(), n = $("#rn").value.trim(), my = ++seq;
+      if (!n) { $("#similar").innerHTML = ""; $("#tidy").innerHTML = ""; last = null; return; }
+      let r; try { r = await api.perfumeLookup(b, n); } catch { return; }
+      if (my !== seq || !$("#similar")) return;
+      last = r;
+      if (r.concentration && CONCS.includes(r.concentration)) $("#rc").value = r.concentration;
+      const tidied = b && (r.brand !== b.replace(/\s+/g, " ") || r.name !== n.replace(/\s+/g, " "));
+      $("#tidy").innerHTML = val(tidied ? html`It will be saved as <b>${r.brand}</b> · <b>${r.name}</b>${r.concentration ? ` · ${r.concentration}` : ""}.` : "");
+      const sim = r.similar || [];
+      $("#similar").innerHTML = val(sim.length ? html`<div class="notice"><b>Is it one of these?</b> Tap yours instead of suggesting it again.
+        <ul class="dup-list">${sim.map((x) => html`<li>${x.status === "approved"
+          ? html`<a href="#/perfume/${x.id}">${x.brand} · ${x.name}</a> <span class="muted small">${x.concentration || ""}</span>`
+          : html`<span>${x.brand} · ${x.name}</span> <span class="muted small">${x.concentration || ""}</span> <span class="pill grey">Waiting for approval</span>`}</li>`)}</ul>
+        <span class="small muted">Not there? Send your suggestion below.</span></div>` : "");
     };
-    $("#rb").addEventListener("change", checkSimilar); $("#rn").addEventListener("change", checkSimilar); checkSimilar();
+    const soon = () => { clearTimeout(timer); timer = setTimeout(lookup, 300); };
+    $("#rb").addEventListener("input", soon); $("#rn").addEventListener("input", soon); lookup();
     $("#reqForm").addEventListener("submit", (e) => {
       e.preventDefault();
       run($("#reqBtn"), async () => {
         const conc = $("#rc").value === "Other / not sure" ? "" : $("#rc").value;
+        const close = await api.perfumeLookup($("#rb").value, $("#rn").value).then((r) => (r.similar || []).filter((x) => x.score >= 0.75)).catch(() => []);
+        if (close.length && !(await confirmBox("Already in the catalog?", `It looks a lot like ${close.slice(0, 3).map((x) => `${x.brand} ${x.name}${x.concentration ? ` (${x.concentration})` : ""}`).join(", ")}. Send yours anyway?`, "Yes, it's different"))) return;
         const r = await api.requestPerfume({ brand: $("#rb").value, name: $("#rn").value, concentration: conc, year: $("#ry").value });
         if (r.result === "exists") { toast("That one is already in the catalog."); go(`/perfume/${r.id}`); }
         else if (r.result === "already_requested") { toast("Someone already suggested it — it's waiting for approval."); }
         else { toast("Thanks! It will appear once an admin approves it."); go("/collection"); }
       });
     });
+  }
+
+  // ---------- Merging duplicate perfumes (admin) ----------
+  function mergeDialog(dup, keep, done) {
+    const sameName = Util.normText(dup.name) === Util.normText(keep.name) && dup.name === keep.name;
+    openModal(html`<form class="dlg" id="mgForm"><h3>Merge duplicate</h3>
+      <p>Merge <b>${dup.brand} ${dup.name}</b>${dup.concentration ? ` (${dup.concentration})` : ""} into <b>${keep.brand} ${keep.name}</b>${keep.concentration ? ` (${keep.concentration})` : ""}?</p>
+      <p class="muted small">Members' collections, wishlists, swaps and reviews move over. Missing notes, perfumers, photo and year are copied. Then the duplicate is deleted. This can't be undone.</p>
+      ${sameName ? "" : html`<fieldset class="field"><legend>Name to keep</legend>
+        <label class="switch"><input type="radio" name="mgName" value="keep" checked> ${keep.name}</label>
+        <label class="switch"><input type="radio" name="mgName" value="dup"> ${dup.name}</label></fieldset>`}
+      <div class="dlg-actions"><button type="button" class="btn secondary" data-close>Cancel</button><button class="btn" id="mgGo">Merge</button></div></form>`,
+    (m) => $("#mgForm", m).addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#mgGo", m), async () => {
+        const useDup = $("[name=mgName]:checked", m)?.value === "dup";
+        const r = await api.mergePerfumes(dup.id, keep.id, useDup);
+        modal.close();
+        const moved = [[r.items, "collection item"], [r.wishlists, "wishlist entry"], [r.swaps, "swap item"], [r.reviews, "review"]].filter(([n]) => n).map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`);
+        toast(`Merged.${moved.length ? " Moved " + moved.join(", ") + "." : ""}`);
+        done && done();
+      });
+    }));
   }
 
   async function pageUser(id) {
@@ -1527,7 +1578,7 @@
     if (!state.profile.is_admin) return setView(html`<div class="empty"><h3>Admins only</h3></div>`);
     const tab = params.get("tab") || "catalog";
     setView(html`<div class="page-head"><div class="eyebrow">Admin</div><h1>Moderation</h1></div>
-      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["notes", "Notes corrections"], ["photos", "Photos"], ["import", "Import CSV"], ["reports", "Reports"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
+      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["dups", "Duplicates"], ["notes", "Notes corrections"], ["photos", "Photos"], ["import", "Import CSV"], ["reports", "Reports"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
     $$("[data-t]").forEach((b) => b.addEventListener("click", () => go(`/admin?tab=${b.dataset.t}`)));
     const ab = $("#ab");
     if (tab === "catalog") {
@@ -1536,10 +1587,28 @@
           <div class="small muted">Suggested by ${p.requester?.display_name || "unknown"} · ${fmtDate(p.created_at)}</div>
           ${p.year == null ? html`<div class="notice" style="margin-top:6px">Year unknown. Check it before approving.</div>`
             : p.year < 2000 ? html`<div class="notice rose" style="margin-top:6px"><b>Pre-2000</b>. Approve only if it's a classic: iconic and still sold today. Approving marks it “Classic”.</div>` : ""}
-          ${p.similar?.length ? html`<div class="notice" style="margin-top:6px">Possible duplicate of: ${p.similar.map((x) => `${x.name} (${x.concentration})`).join(", ")}</div>` : ""}</div>
+          ${p.similar?.length ? html`<div class="notice" style="margin-top:6px"><b>Possible duplicate of:</b><ul class="dup-list">${p.similar.map((x) => html`<li>${x.status === "approved" ? html`<a href="#/perfume/${x.id}">${x.brand} · ${x.name}</a>` : html`${x.brand} · ${x.name}`} <span class="muted small">${x.concentration || ""}${x.status === "approved" ? "" : " · also waiting"}</span>
+            ${x.status === "approved" ? html` <button class="btn small secondary" data-mq="${p.id}" data-into="${x.id}">Merge into this</button>` : ""}</li>`)}</ul></div>` : ""}</div>
           <div class="row"><button class="btn small" data-ok="${p.id}">Approve</button><button class="btn small secondary" data-no="${p.id}">Reject</button></div></div></li>`)}</ul>` : html`<div class="empty"><p>No pending requests.</p></div>`);
       $$("[data-ok]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.reviewPerfume(b.dataset.ok, true); toast("Approved."); route(); })));
       $$("[data-no]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.reviewPerfume(b.dataset.no, false); toast("Rejected."); route(); })));
+      $$("[data-mq]", ab).forEach((b) => b.addEventListener("click", () => {
+        const p = rows.find((r) => r.id === Number(b.dataset.mq)), x = p.similar.find((s) => s.id === Number(b.dataset.into));
+        mergeDialog(p, x, route);
+      }));
+    } else if (tab === "dups") {
+      const rows = await api.findDuplicatePerfumes();
+      const side = (x) => html`<div class="dup-side"><div class="brand">${x.brand}</div><a class="pname" href="#/perfume/${x.id}">${x.name}</a>
+        <div class="small muted">${x.concentration || "concentration unknown"}${x.year ? " · " + x.year : ""} · used by ${x.uses} member${x.uses === 1 ? "" : "s"}</div></div>`;
+      ab.innerHTML = val(html`<p class="muted small">Perfumes that look like the same one: same brand, and the same name or one misspelled word. Pick the one to keep, or mark the pair as different.</p>
+        ${rows.length ? html`<ul class="list card">${rows.map((d, i) => html`<li><div class="dup-pair">${side(d.a)}<span class="dup-eq" aria-hidden="true">≈</span>${side(d.b)}</div>
+          <div class="row" style="margin-top:8px"><button class="btn small" data-mi="${i}" data-keep="a">Keep “${d.a.name}”</button><button class="btn small" data-mi="${i}" data-keep="b">Keep “${d.b.name}”</button><button class="btn small ghost" data-nd="${i}">Not a duplicate</button></div></li>`)}</ul>`
+        : html`<div class="empty"><p>No duplicates found. Tidy!</p></div>`}`);
+      $$("[data-mi]", ab).forEach((b) => b.addEventListener("click", () => {
+        const d = rows[Number(b.dataset.mi)], keep = b.dataset.keep === "a" ? d.a : d.b, dup = b.dataset.keep === "a" ? d.b : d.a;
+        mergeDialog(dup, keep, route);
+      }));
+      $$("[data-nd]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { const d = rows[Number(b.dataset.nd)]; await api.markNotDuplicate(d.a.id, d.b.id); toast("Marked as different perfumes."); route(); })));
     } else if (tab === "notes") {
       const rows = await api.listNoteSuggestions();
       const diff = (label, now, next) => html`<tr><th>${label}</th><td class="muted">${(now || []).join(", ") || "—"}</td><td><b>${(next || []).join(", ") || "—"}</b></td></tr>`;

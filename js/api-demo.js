@@ -190,6 +190,20 @@
   const prof = (id) => db.profiles.find((p) => p.id === id) || null;
   const lite = (id) => { const p = prof(id); return p && { id: p.id, display_name: p.display_name, city: p.city, country: p.country, is_banned: p.is_banned, avatar_url: p.avatar_url || null }; };
   const perf = (id) => db.perfumes.find((p) => p.id === id) || null;
+  // Duplicate catching — mirrors migration 015 (the live site does this in the database).
+  const approvedBrands = () => [...new Set(db.perfumes.filter((p) => p.status === "approved").map((p) => p.brand))].sort((a, b) => a.localeCompare(b));
+  const canonicalBrand = (t) => Util.canonicalBrand(t, approvedBrands());
+  function similarTo(brand, name, excludeId = null) {
+    const b = canonicalBrand(brand), n = Util.tidyPerfumeName(b, name).name;
+    if (!Util.normText(n)) return [];
+    const bk = Util.brandKey(b), w = Util.normWords(n), all = Util.normWords(b + " " + n);
+    return db.perfumes.filter((p) => p.status !== "rejected" && p.id !== excludeId).map((p) => {
+      let s = 0;
+      if (Util.brandKey(p.brand) === bk) s = Util.normText(p.name) === Util.normText(n) ? 1 : Math.max(Util.similarity(Util.normWords(p.name), w), Util.wordSimilarity(w, Util.normWords(p.name)) * 0.9);
+      s = Math.max(s, Util.similarity(Util.normWords(p.brand + " " + p.name), all) * 0.9);
+      return { id: p.id, brand: p.brand, name: p.name, concentration: p.concentration, year: p.year, status: p.status, image_url: p.image_url, score: Math.round(s * 100) / 100 };
+    }).filter((p) => p.score >= 0.45).sort((x, y) => y.score - x.score || x.brand.localeCompare(y.brand) || x.name.localeCompare(y.name)).slice(0, 8);
+  }
   const active = () => { const p = prof(me()); if (!p || p.is_banned || !p.adult_confirmed_at) fail("Your account cannot do this right now."); };
   // Same rules as migration 008: either side blocking hides listings/wishlists and stops swaps.
   // Unrounded distance in miles between me and another member, or null if either has no ZIP.
@@ -366,19 +380,30 @@
     async requestPerfume({ brand, name, concentration, year }) {
       active(); await tick();
       if (!Util.normText(brand) || !Util.normText(name)) fail("Please fill in both the brand and the perfume name.");
-      const key = Util.perfumeKey(brand, name, concentration);
-      const hit = db.perfumes.find((p) => p.status !== "rejected" && Util.perfumeKey(p.brand, p.name, p.concentration) === key);
+      // Same tidying as request_perfume() in migration 015.
+      const b = canonicalBrand(brand).slice(0, 80), t = Util.tidyPerfumeName(b, name);
+      let n = t.name, conc = String(concentration || "").trim();
+      if (t.concentration && (!conc || Util.normText(conc) === Util.normText(t.concentration))) conc = t.concentration;
+      else if (t.concentration) n = String(name).trim().replace(/\s+/g, " ");
+      n = n.slice(0, 120);
+      const key = Util.perfumeKey(b, n, conc);
+      let hit = db.perfumes.find((p) => p.status !== "rejected" && Util.perfumeKey(p.brand, p.name, p.concentration) === key);
+      if (!hit && !conc) hit = db.perfumes.filter((p) => p.status !== "rejected" && Util.brandNameKey(p.brand, p.name) === Util.brandNameKey(b, n))
+        .sort((x, y) => (y.status === "approved") - (x.status === "approved") || x.id - y.id)[0];
       if (hit) return { result: hit.status === "approved" ? "exists" : "already_requested", id: hit.id };
       const y = year ? Number(year) : null;
       if (y !== null && !(y >= 1700 && y <= 2100)) fail("Year looks off.");
-      const p = { id: ++db.seq, brand: brand.trim(), name: name.trim(), concentration: String(concentration || "").trim(), year: y, status: "pending", is_classic: false, requested_by: uid, created_at: now(), family: null, notes_top: [], notes_heart: [], notes_base: [], perfumers: [], rating_avg: null, rating_count: 0, image_url: null, image_credit: null };
+      const p = { id: ++db.seq, brand: b, name: n, concentration: conc, year: y, status: "pending", is_classic: false, requested_by: uid, created_at: now(), family: null, notes_top: [], notes_heart: [], notes_base: [], perfumers: [], rating_avg: null, rating_count: 0, image_url: null, image_credit: null };
       db.perfumes.push(p); save();
       return { result: "requested", id: p.id };
     },
-    async similarPerfumes(brand, name) {
-      const k = Util.brandNameKey(brand, name);
-      return clone(db.perfumes.filter((p) => p.status === "approved" && Util.brandNameKey(p.brand, p.name) === k));
+    async similarPerfumes(brand, name, excludeId = null) { me(); return similarTo(brand, name, excludeId); },
+    async perfumeLookup(brand, name) {
+      me();
+      const b = canonicalBrand(brand), t = Util.tidyPerfumeName(b, name);
+      return { brand: b, name: t.name, concentration: t.concentration, similar: similarTo(brand, name) };
     },
+    async catalogBrands() { me(); return approvedBrands(); },
 
     async listItems({ ownerId, tradeableOnly, perfumeIds, excludeOwnerId, limit = 200 } = {}) {
       me();
@@ -709,9 +734,12 @@
       const arr = (a, n, len) => (a || []).map((x) => String(x).trim().slice(0, len)).filter(Boolean).slice(0, n);
       rows.forEach((r, k) => {
         const row = k + 1;
-        const brand = String(r.brand || "").trim().slice(0, 80), name = String(r.name || "").trim().slice(0, 120);
+        const brand = canonicalBrand(r.brand).slice(0, 80);
+        let name = String(r.name || "").trim().slice(0, 120);
         let conc = String(r.concentration || "").trim().slice(0, 60);
         conc = ABBR[conc.toLowerCase().replace(/[^a-z]/g, "")] || conc;
+        const t = Util.tidyPerfumeName(brand, name);
+        if (!t.concentration || !conc || Util.normText(conc) === Util.normText(t.concentration)) { name = t.name.slice(0, 120); conc = conc || t.concentration; }
         if (!Util.normText(brand) || !Util.normText(name)) return out.push({ row, status: "invalid", message: "Brand and name are required." });
         const ys = String(r.year ?? "").trim(), year = ys ? Number(ys) : null;
         if (year !== null && !(Number.isInteger(year) && year >= 1700 && year <= 2100)) return out.push({ row, status: "invalid", message: "Year looks off." });
@@ -739,8 +767,61 @@
       adminOnly();
       return db.perfumes.filter((p) => p.status === "pending").map((p) => ({
         ...clone(p), requester: lite(p.requested_by),
-        similar: clone(db.perfumes.filter((x) => x.id !== p.id && x.status === "approved" && Util.brandNameKey(x.brand, x.name) === Util.brandNameKey(p.brand, p.name)))
+        similar: similarTo(p.brand, p.name, p.id)
       }));
+    },
+    async findDuplicatePerfumes() {
+      adminOnly(); await tick();
+      db.notDuplicates = db.notDuplicates || [];
+      const uses = (id) => db.items.filter((i) => i.perfume_id === id).length + db.wishes.filter((w) => w.perfume_id === id).length;
+      const ps = db.perfumes.filter((p) => p.status === "approved").map((p) => {
+        const cb = Util.canonicalBrand(p.brand); return { p, bk: Util.brandKey(cb), w: Util.normWords(p.name), c: Util.normText(p.concentration) };
+      });
+      const groups = new Map(); ps.forEach((x) => { if (!groups.has(x.bk)) groups.set(x.bk, []); groups.get(x.bk).push(x); });
+      const out = [];
+      groups.forEach((g) => { for (let i = 0; i < g.length; i++) for (let j = 0; j < g.length; j++) {
+        let [x, y] = [g[i], g[j]]; if (x.p.id >= y.p.id) continue;
+        if (!(x.c === y.c || !x.c || !y.c)) continue;
+        if (!(x.w === y.w || Util.normText(x.p.name) === Util.normText(y.p.name) || Util.oneWordTypo(x.w, y.w))) continue;
+        if (db.notDuplicates.some((n) => n.a === x.p.id && n.b === y.p.id)) continue;
+        const side = (q) => ({ id: q.id, brand: q.brand, name: q.name, concentration: q.concentration, year: q.year, uses: uses(q.id) });
+        out.push({ score: Util.normText(x.p.name) === Util.normText(y.p.name) ? 1 : Math.round(Util.similarity(x.w, y.w) * 100) / 100, a: side(x.p), b: side(y.p) });
+      } });
+      return out.sort((x, y) => y.score - x.score).slice(0, 200);
+    },
+    async markNotDuplicate(a, b) {
+      adminOnly(); db.notDuplicates = db.notDuplicates || [];
+      const [x, y] = [Number(a), Number(b)].sort((m, n) => m - n);
+      if (!db.notDuplicates.some((n) => n.a === x && n.b === y)) db.notDuplicates.push({ a: x, b: y });
+      save();
+    },
+    // Same as admin_merge_perfumes() in migration 015.
+    async mergePerfumes(dupId, keepId, useDupName = false) {
+      adminOnly(); await tick();
+      const dup = Number(dupId), keep = Number(keepId);
+      if (dup === keep) fail("Pick two different perfumes.");
+      const d = perf(dup) || fail("The duplicate was not found (maybe it was already merged).");
+      const k = perf(keep) || fail("The perfume to keep was not found.");
+      if (k.status === "rejected") fail("Keep an approved perfume, not a rejected one.");
+      if (useDupName && db.perfumes.some((p) => p.id !== keep && p.id !== dup && p.status !== "rejected" && Util.perfumeKey(p.brand, p.name, p.concentration) === Util.perfumeKey(k.brand, d.name, k.concentration)))
+        fail("Another perfume already uses that name. Merge that one first.");
+      const r = { items: 0, wishlists: 0, wishlists_already_there: 0, swaps: 0, reviews: 0, reviews_already_there: 0 };
+      db.items.forEach((i) => { if (i.perfume_id === dup) { i.perfume_id = keep; r.items++; } });
+      db.swapItems.forEach((i) => { if (i.perfume_id === dup) { i.perfume_id = keep; r.swaps++; } });
+      db.wishes = db.wishes.filter((w) => { const drop = w.perfume_id === dup && db.wishes.some((x) => x.user_id === w.user_id && x.perfume_id === keep); if (drop) r.wishlists_already_there++; return !drop; });
+      db.wishes.forEach((w) => { if (w.perfume_id === dup) { w.perfume_id = keep; r.wishlists++; } });
+      db.perfumeReviews = db.perfumeReviews.filter((v) => { const drop = v.perfume_id === dup && db.perfumeReviews.some((x) => x.user_id === v.user_id && x.perfume_id === keep); if (drop) r.reviews_already_there++; return !drop; });
+      db.perfumeReviews.forEach((v) => { if (v.perfume_id === dup) { v.perfume_id = keep; r.reviews++; } });
+      db.noteSuggestions.forEach((x) => { if (x.perfume_id === dup) x.perfume_id = keep; });
+      db.photoSuggestions.forEach((x) => { if (x.perfume_id === dup) x.perfume_id = keep; });
+      k.year = k.year ?? d.year; k.family = k.family || d.family;
+      ["notes_top", "notes_heart", "notes_base", "perfumers"].forEach((f) => { if (!(k[f] || []).length) k[f] = d[f] || []; });
+      if (!k.image_url) { k.image_url = d.image_url; k.image_credit = d.image_credit; }
+      k.is_classic = !!(k.is_classic || d.is_classic);
+      db.perfumes = db.perfumes.filter((p) => p.id !== dup);
+      if (useDupName) k.name = d.name;
+      recalcRating(db, keep); save();
+      return r;
     },
     async reviewPerfume(id, approve) {
       adminOnly();

@@ -20,6 +20,78 @@
   function brandNameKey(brand, name) { return normText(brand) + "|" + normText(name); }
   function perfumeKey(brand, name, conc) { return brandNameKey(brand, name) + "|" + normText(conc); }
 
+  // ---- Duplicate catching (mirrors supabase/migrations/015; the demo uses these, the live site asks the database) ----
+  // Words kept apart, for fuzzy matching. "Musc" (French) = "Musk".
+  function normWords(t) {
+    return String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/ø/g, "o").replace(/ł/g, "l").replace(/œ/g, "o").replace(/æ/g, "a")
+      .replace(/\b(oudh|aoud|oude)\b/g, "oud").replace(/\b(misk|mousk|musc)\b/g, "musk")
+      .replace(/[^a-z0-9]+/g, " ").trim();
+  }
+  // Looser brand key: "Jo Malone" = "Jo Malone London", "Dolce and Gabbana" = "Dolce & Gabbana".
+  function brandKey(t) {
+    return normText(normWords(t).replace(/\b(and|the|parfums?|perfumes?|perfumery|paris|london|fragrances?|cosmetics)\b/g, " "));
+  }
+  const BRAND_ALIASES = [["YSL", "Yves Saint Laurent"], ["Saint Laurent", "Yves Saint Laurent"], ["Yves St Laurent", "Yves Saint Laurent"],
+    ["Christian Dior", "Dior"], ["Dior Parfums", "Dior"], ["Armani", "Giorgio Armani"], ["MFK", "Maison Francis Kurkdjian"],
+    ["Francis Kurkdjian", "Maison Francis Kurkdjian"], ["Kurkdjian", "Maison Francis Kurkdjian"], ["PDM", "Parfums de Marly"], ["De Marly", "Parfums de Marly"],
+    ["JPG", "Jean Paul Gaultier"], ["Gaultier", "Jean Paul Gaultier"], ["Jean-Paul Gaultier", "Jean Paul Gaultier"], ["CK", "Calvin Klein"], ["CH", "Carolina Herrera"],
+    ["D&G", "Dolce & Gabbana"], ["DG", "Dolce & Gabbana"], ["TF", "Tom Ford"], ["Bulgari", "Bvlgari"], ["By Kilian", "Kilian"], ["Kilian Paris", "Kilian"],
+    ["Rabanne", "Paco Rabanne"], ["Thierry Mugler", "Mugler"], ["Annick Goutal", "Goutal"], ["Frederic Malle", "Frédéric Malle"],
+    ["Editions de Parfums Frederic Malle", "Frédéric Malle"], ["Malle", "Frédéric Malle"], ["MMM", "Maison Margiela"], ["Margiela", "Maison Margiela"],
+    ["Maison Martin Margiela", "Maison Margiela"], ["BDK", "BDK Parfums"], ["Bond No 9", "Bond No. 9"], ["Bond Number 9", "Bond No. 9"], ["Bond Number Nine", "Bond No. 9"],
+    ["VS", "Victoria's Secret"], ["BBW", "Bath & Body Works"], ["A&F", "Abercrombie & Fitch"], ["Abercrombie", "Abercrombie & Fitch"],
+    ["Van Cleef", "Van Cleef & Arpels"], ["DS Durga", "D.S. & Durga"], ["DS & Durga", "D.S. & Durga"], ["CDG", "Comme des Garçons"], ["LV", "Louis Vuitton"],
+    ["Roja Dove", "Roja Parfums"], ["Roja", "Roja Parfums"], ["Initio Parfums Prives", "Initio"], ["Dsquared", "Dsquared2"], ["Nishane Istanbul", "Nishane"],
+    ["Hermes", "Hermès"], ["Lancome", "Lancôme"], ["Estee Lauder", "Estée Lauder"], ["Chloe", "Chloé"], ["Penhaligons", "Penhaligon's"], ["Boss", "Hugo Boss"],
+    ["Elizabeth & James", "Elizabeth and James"], ["Viktor and Rolf", "Viktor&Rolf"], ["Ralph Lauren Fragrances", "Ralph Lauren"]];
+  const ALIAS = new Map(BRAND_ALIASES.map(([a, b]) => [brandKey(a), b]));
+  function canonicalBrand(t, brands = []) {
+    const k = brandKey(t), clean = String(t || "").trim().replace(/\s+/g, " ");
+    if (!k) return clean;
+    if (ALIAS.has(k)) return ALIAS.get(k);
+    return brands.find((b) => brandKey(b) === k) || clean;
+  }
+  const CONC_END = /^(.*?)[\s,\-–—(]+(eau de parfum|eau de toilette|eau de cologne|extrait de parfum|parfum extrait|extrait|edp|edt|edc|perfume oil|attar)\)?\.?$/i;
+  const CONC_NAME = { eaudeparfum: "Eau de Parfum", eaudetoilette: "Eau de Toilette", eaudecologne: "Eau de Cologne", extraitdeparfum: "Extrait de Parfum", perfumeoilattar: "Perfume Oil / Attar" };
+  // "Sauvage EDP" → {name: "Sauvage", concentration: "Eau de Parfum"}; "Dior Sauvage" under Dior → "Sauvage".
+  function tidyPerfumeName(brand, name) {
+    let n = String(name || "").trim().replace(/\s+/g, " "), conc = "";
+    const b = String(brand || "").trim().replace(/\s+/g, " ");
+    const m = n.match(CONC_END);
+    if (m && normText(m[1])) { n = m[1].trim(); conc = CONC_NAME[normText(m[2])] || ""; }
+    if (b && n.toLowerCase().startsWith(b.toLowerCase() + " ") && normText(n.slice(b.length + 1))) n = n.slice(b.length + 1).trim();
+    return { name: n, concentration: conc };
+  }
+  // pg_trgm's similarity(): shared 3-letter pieces of the padded words.
+  function trigrams(s) {
+    const set = new Set();
+    for (const w of String(s).split(/[^a-z0-9]+/).filter(Boolean)) { const p = "  " + w + " "; for (let i = 0; i + 3 <= p.length; i++) set.add(p.slice(i, i + 3)); }
+    return set;
+  }
+  function similarity(a, b) {
+    const A = trigrams(a), B = trigrams(b); if (!A.size || !B.size) return 0;
+    let n = 0; A.forEach((g) => { if (B.has(g)) n++; }); return n / (A.size + B.size - n);
+  }
+  // Best match of a's trigrams inside b (approximation of pg_trgm word_similarity).
+  function wordSimilarity(a, b) {
+    const A = trigrams(a); if (!A.size) return 0;
+    const words = String(b).split(" ").filter(Boolean); let best = 0;
+    for (let i = 0; i < words.length; i++) for (let j = i; j < words.length; j++) {
+      const B = trigrams(words.slice(i, j + 1).join(" ")); let n = 0; A.forEach((g) => { if (B.has(g)) n++; }); best = Math.max(best, n / A.size);
+    }
+    return best;
+  }
+  // Same name apart from one misspelled word ("Bacarat Rouge 540"), not a flanker or a different number.
+  function oneWordTypo(a, b) {
+    const x = String(a).split(" "), y = String(b).split(" ");
+    if (a === b || x.length !== y.length) return false;
+    const d = x.map((w, i) => [w, y[i]]).filter(([p, q]) => p !== q);
+    if (d.length !== 1) return false;
+    const [p, q] = d[0], num = /^([0-9]+|[ivxl]+)$/;
+    return p.length >= 4 && q.length >= 4 && !num.test(p) && !num.test(q) && similarity(p, q) >= 0.3;
+  }
+
   // Shrink a photo before saving it (keeps uploads small and fast).
   function resizeImage(file, maxSide = 900, quality = 0.82) {
     return new Promise((resolve, reject) => {
@@ -73,5 +145,5 @@
   // Same rounding as member_distances(): nearest mile up to 20, nearest 5 up to 50, nothing beyond.
   const roundMiles = (d) => (d > 50 ? null : d <= 20 ? Math.max(1, Math.round(d)) : Math.round(d / 5) * 5);
 
-  window.Util = { normText, brandNameKey, perfumeKey, resizeImage, zipLookup, milesBetween, roundMiles };
+  window.Util = { normText, brandNameKey, perfumeKey, normWords, brandKey, canonicalBrand, tidyPerfumeName, similarity, wordSimilarity, oneWordTypo, resizeImage, zipLookup, milesBetween, roundMiles };
 })();

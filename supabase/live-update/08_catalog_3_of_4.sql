@@ -542,7 +542,7 @@ insert into public.perfumes (brand, name, concentration, year, status, is_classi
   ('Matiere Premiere', 'Vanilla Powder', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),
   ('Matiere Premiere', 'Falcon Leather', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),
   ('Matiere Premiere', 'Crystal Saffron', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),
-  ('Matiere Premiere', 'Parisian Musk', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),
+  ('Matiere Premiere', 'Parisian Musc', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),
   ('Matiere Premiere', 'Neroli Oranger', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),
   ('Matiere Premiere', 'Cologne Originelle', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),
   ('Eris Parfums', 'Night Flower', 'Eau de Parfum', null, 'approved', false, null, '{}'::text[], '{}'::text[], '{}'::text[]),

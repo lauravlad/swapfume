@@ -139,9 +139,11 @@
       async requestPerfume({ brand, name, concentration, year }) {
         return check(await sb.rpc("request_perfume", { p_brand: brand, p_name: name, p_concentration: concentration || "", p_year: year ? Number(year) : null }));
       },
-      async similarPerfumes(brand, name) {
-        return check(await sb.from("perfumes").select("*").eq("status", "approved").eq("brand_name_key", Util.brandNameKey(brand, name)));
+      async similarPerfumes(brand, name, excludeId = null) {
+        return check(await sb.rpc("similar_perfumes", { p_brand: brand, p_name: name, p_exclude: excludeId ? Number(excludeId) : null })) || [];
       },
+      async perfumeLookup(brand, name) { return check(await sb.rpc("perfume_lookup", { p_brand: brand, p_name: name })); },
+      async catalogBrands() { return check(await sb.rpc("catalog_brands")) || []; },
 
       async listItems({ ownerId, tradeableOnly, perfumeIds, excludeOwnerId, limit = 200 } = {}) {
         let q = sb.from("collection_items").select(ITEM_SEL);
@@ -319,10 +321,13 @@
       async isAdmin() { if (!uid) return false; const p = await this.getProfile(uid); return !!p?.is_admin; },
       async listPendingPerfumes() {
         const rows = check(await sb.from("perfumes").select("*, requester:profiles!perfumes_requested_by_fkey(id,display_name)").eq("status", "pending").order("created_at"));
-        for (const r of rows) {
-          r.similar = check(await sb.from("perfumes").select("*").eq("status", "approved").eq("brand_name_key", r.brand_name_key));
-        }
+        await Promise.all(rows.map(async (r) => { r.similar = await this.similarPerfumes(r.brand, r.name, r.id); }));
         return rows;
+      },
+      async findDuplicatePerfumes() { return check(await sb.rpc("admin_find_duplicate_perfumes")) || []; },
+      async markNotDuplicate(a, b) { check(await sb.rpc("admin_mark_not_duplicate", { p_a: Number(a), p_b: Number(b) })); },
+      async mergePerfumes(dupId, keepId, useDupName = false) {
+        return check(await sb.rpc("admin_merge_perfumes", { p_dup: Number(dupId), p_keep: Number(keepId), p_use_dup_name: !!useDupName }));
       },
       async reviewPerfume(id, approve) { check(await sb.rpc("admin_review_perfume", { p_id: Number(id), p_approve: !!approve })); },
       async listReports() {
