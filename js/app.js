@@ -160,7 +160,8 @@
         ${i.size !== "sample" && i.fill_pct != null ? html`<div class="fill" aria-hidden="true"><span style="width:${i.fill_pct}%"></span></div>` : ""}
         ${i.note ? html`<span class="meta">“${i.note}”</span>` : ""}
         ${mine ? html`<div class="row" style="margin-top:4px">${i.tradeable ? html`<span class="pill ok">Open to trade</span>` : html`<span class="pill grey">Keeping</span>`}${i.is_hidden ? html`<span class="pill warn">Hidden by admin</span>` : ""}</div>
-          <div class="actions"><button class="btn small secondary" data-edit="${i.id}">Edit</button><button class="btn small ghost" data-toggle="${i.id}">${i.tradeable ? "Keep instead" : "Offer to trade"}</button></div>` : ""}
+          <div class="actions"><button class="btn small secondary" data-edit="${i.id}">Edit</button><button class="btn small ghost" data-toggle="${i.id}">${i.tradeable ? "Keep instead" : "Offer to trade"}</button></div>
+          ${p?.status === "approved" ? html`<a class="review-link small" href="#/perfume/${p.id}?review=1"><span aria-hidden="true">★</span> Write a review</a>` : ""}` : ""}
         ${owner && i.owner ? html`<div class="owner">from <a href="#/u/${i.owner.id}">${i.owner.display_name}</a>${place(i.owner) ? html` <span class="muted">· ${i.owner.city || i.owner.country}</span>` : ""}</div>` : ""}
       </div>`;
     if (select) return html`<label class="tile selectable ${checked ? "on" : ""}"><input type="checkbox" name="${select}" value="${i.id}" ${checked ? raw("checked") : ""}><span class="check" aria-hidden="true"></span>${inner}</label>`;
@@ -616,6 +617,307 @@
       : html`<div class="empty"><h3>No match</h3><p>Not in the catalog yet? Suggest it and an admin will add it.</p><a class="btn secondary" href="#/request?name=${encodeURIComponent(q)}">Suggest a perfume</a></div>`);
   }
 
+  // ---------- Share your swap shelf on Facebook, Instagram or Reddit: ready-made text + picture ----------
+  // Facebook and Instagram don't let other sites pre-fill a post, so we copy the text for the member to paste
+  // and make a picture they can attach (or share straight from the phone's share sheet).
+  // Reddit does accept a pre-filled title and text, so that one opens ready to post.
+  const FB_ICON = raw(`<svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 8.5V6.8c0-.8.5-1 1-1h2V2.2h-2.8C11.1 2.2 10.4 4.5 10.4 6v2.5H8V12h2.4v9.8H14V12h2.7l.4-3.5z"/></svg>`);
+  const IG_ICON = raw(`<svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4zm0 7.7a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm4.9-8.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM21.9 7.1c-.1-1.6-.4-3-1.6-4.2S17.6 1.3 16 1.2C14.3 1.1 9.7 1.1 8 1.2c-1.6.1-3 .4-4.2 1.6S2.2 5.5 2.1 7.1C2 8.8 2 13.2 2.1 14.9c.1 1.6.4 3 1.6 4.2s2.6 1.5 4.2 1.6c1.7.1 6.3.1 8 0 1.6-.1 3-.4 4.2-1.6s1.5-2.6 1.6-4.2c.1-1.7.1-6.1 0-7.8zm-2.2 9.6a3.2 3.2 0 0 1-1.8 1.8c-1.3.5-4.3.4-5.9.4s-4.6.1-5.9-.4a3.2 3.2 0 0 1-1.8-1.8c-.5-1.3-.4-4.3-.4-5.7s-.1-4.4.4-5.7A3.2 3.2 0 0 1 6.1 3.5C7.4 3 10.4 3.1 12 3.1s4.6-.1 5.9.4a3.2 3.2 0 0 1 1.8 1.8c.5 1.3.4 4.3.4 5.7s.1 4.4-.4 5.7z"/></svg>`);
+  const RD_ICON = raw(`<svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.1a2.2 2.2 0 0 0-3.7-1.6 10.7 10.7 0 0 0-5.8-1.8l1-4.6 3.2.7a1.6 1.6 0 1 0 .2-1l-3.6-.8a.5.5 0 0 0-.6.4l-1.1 5.3a10.8 10.8 0 0 0-5.9 1.8 2.2 2.2 0 1 0-2.4 3.6 4.3 4.3 0 0 0 0 .6c0 3.3 3.8 5.9 8.6 5.9s8.6-2.6 8.6-5.9a4.3 4.3 0 0 0 0-.6 2.2 2.2 0 0 0 1.5-2zM7.5 13.6a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm8.4 4c-1 .9-2.7 1.1-3.9 1.1s-2.9-.2-3.9-1.1a.4.4 0 0 1 .6-.6c.7.7 2 .9 3.3.9s2.6-.2 3.3-.9a.4.4 0 0 1 .6.6zm-.4-2.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`);
+  const SITE_URL = CFG.PUBLIC_SITE_URL || "https://swapfume.com/";
+  const NETWORKS = {
+    facebook: { label: "Facebook", icon: FB_ICON },
+    instagram: { label: "Instagram", icon: IG_ICON },
+    reddit: { label: "Reddit", icon: RD_ICON }
+  };
+  const FAMILY_TAG = { floral: "floralperfume", woody: "woodyfragrance", amber: "amberfragrance", citrus: "citrusfragrance", fresh: "freshfragrance", aquatic: "aquaticfragrance", green: "greenfragrance", fruity: "fruityfragrance", gourmand: "gourmandfragrance", musky: "muskfragrance", leather: "leatherfragrance", aromatic: "aromaticfragrance", chypre: "chypre", "fougère": "fougere" };
+
+  function postLine(i) {
+    const p = i.perfume || {};
+    const bits = [SIZE_LABEL[i.size], i.volume_ml ? `${+i.volume_ml} ml` : "", i.size !== "sample" && i.fill_pct != null && i.fill_pct < 100 ? `about ${i.fill_pct}% left` : ""].filter(Boolean);
+    return `${p.brand} ${p.name}${p.concentration ? ` (${p.concentration})` : ""}${bits.length ? " · " + bits.join(", ") : ""}`;
+  }
+  const me = () => state.profile?.display_name || "me";
+  function postTitle(items) { return `[US] Swap shelf: ${items.length} perfume${items.length === 1 ? "" : "s"} open for trade (no money, perfume for perfume)`; }
+  function postText(items, wishes, withWishes, net = "facebook") {
+    const wishList = withWishes && wishes.length ? wishes.slice(0, 15) : [];
+    const more = wishes.length > 15 ? wishes.length - 15 : 0;
+    if (net === "reddit") {
+      // Reddit uses Markdown: "- " for bullets, ** for bold. Plain and factual reads best there.
+      const lines = ["Hi all! I'm swapping perfume for perfume (no money). Here's what I have open for trade:", "", ...items.map((i) => "- " + postLine(i).replace(" · ", " — "))];
+      if (wishList.length) lines.push("", "**On my wishlist:**", "", ...wishList.map((w) => "- " + pTitle(w.perfume)), ...(more ? [`- …and ${more} more`] : []));
+      lines.push("", `US only. I'm “${me()}” on Swapfume (${SITE_URL}), a free swap community, or just comment / DM me here.`);
+      return lines.join("\n");
+    }
+    if (net === "instagram") {
+      // Links aren't clickable in Instagram captions, so the site is written out; hashtags help people find it.
+      const fams = [...new Set(items.map((i) => FAMILY_TAG[i.perfume?.family]).filter(Boolean))].slice(0, 4);
+      const lines = ["My scent wardrobe is open for swapping ✨", "Perfume for perfume, never money.", "", ...items.map((i) => "🌸 " + postLine(i))];
+      if (wishList.length) lines.push("", "Dreaming of:", ...wishList.map((w) => "💭 " + pTitle(w.perfume)), ...(more ? [`…and ${more} more`] : []));
+      lines.push("", `Swap with me on Swapfume, I'm “${me()}” 💌 swapfume.com`, "",
+        ["#perfumeswap", "#fragranceswap", "#perfumecommunity", "#fragrancecommunity", "#perfumecollection", "#scentoftheday", "#swapfume", ...fams.map((t) => "#" + t)].join(" "));
+      return lines.join("\n");
+    }
+    const lines = ["✨ My scent wardrobe is open for swapping ✨", "Perfume for perfume, never money. Here's what's waiting for a new home:", "", ...items.map((i) => "🌸 " + postLine(i))];
+    if (wishList.length) lines.push("", "On my wishlist, in case you have one to spare:", ...wishList.map((w) => "💭 " + pTitle(w.perfume)), ...(more ? [`…and ${more} more`] : []));
+    lines.push("", `Fancy a swap? Find me on Swapfume as “${me()}” 💌 ${SITE_URL}`);
+    return lines.join("\n");
+  }
+
+  // Picture styles for shared posts, one per kind of perfume. Colours and drawings change; layout stays.
+  const POST_STYLES = {
+    floral:   { label: "Floral", families: ["floral"], bg: ["#FDF3F3", "#F6DCE2"], blooms: ["rgba(226,140,160,.45)", "rgba(240,190,200,.45)", "rgba(200,120,150,.25)", "rgba(250,215,200,.4)"],
+                ink: "#2A211E", muted: "#6B5D57", accent: "#A8445E", gold: "#A0782C", glass: ["rgba(168,68,94,.30)", "rgba(240,180,195,.32)", "rgba(168,68,94,.42)"], juice: ["rgba(240,170,190,.6)", "rgba(206,110,140,.6)"], motif: "flowers" },
+    woody:    { label: "Woody & leather", families: ["woody", "leather", "chypre"], bg: ["#F7EFE4", "#E6D3BC"], blooms: ["rgba(170,120,70,.35)", "rgba(200,160,110,.35)", "rgba(120,80,50,.2)", "rgba(220,190,150,.4)"],
+                ink: "#2B1F17", muted: "#68584A", accent: "#7A4B2A", gold: "#8E6A2A", glass: ["rgba(122,75,42,.32)", "rgba(210,170,120,.3)", "rgba(122,75,42,.45)"], juice: ["rgba(190,130,70,.6)", "rgba(130,80,40,.65)"], motif: "leaves" },
+    amber:    { label: "Amber & oud", families: ["amber", "musky"], dark: true, bg: ["#2A1618", "#140B0D"], blooms: ["rgba(190,120,50,.35)", "rgba(150,50,60,.35)", "rgba(220,160,80,.18)", "rgba(120,40,50,.3)"],
+                ink: "#F6E7D2", muted: "#CDB79E", accent: "#E7B562", gold: "#D9AE62", glass: ["rgba(231,181,98,.22)", "rgba(255,220,160,.18)", "rgba(231,181,98,.32)"], juice: ["rgba(220,140,50,.7)", "rgba(150,60,30,.75)"], motif: "smoke" },
+    fresh:    { label: "Fresh & citrus", families: ["citrus", "fresh", "green", "aromatic", "fougère"], bg: ["#FBFAEE", "#E5F0DC"], blooms: ["rgba(240,210,90,.42)", "rgba(150,200,130,.38)", "rgba(250,230,140,.4)", "rgba(180,220,170,.35)"],
+                ink: "#1F2A20", muted: "#56604F", accent: "#4D7A3A", gold: "#B08A1E", glass: ["rgba(77,122,58,.26)", "rgba(220,240,190,.35)", "rgba(77,122,58,.38)"], juice: ["rgba(245,215,100,.6)", "rgba(200,190,70,.6)"], motif: "citrus" },
+    aquatic:  { label: "Aquatic", families: ["aquatic"], bg: ["#F2F8FB", "#D5E8F1"], blooms: ["rgba(120,180,215,.42)", "rgba(170,215,230,.42)", "rgba(80,140,190,.22)", "rgba(200,230,240,.45)"],
+                ink: "#18283A", muted: "#4E6070", accent: "#2E6A92", gold: "#8E7A4A", glass: ["rgba(46,106,146,.26)", "rgba(200,230,245,.35)", "rgba(46,106,146,.38)"], juice: ["rgba(140,200,230,.6)", "rgba(70,140,190,.6)"], motif: "waves" },
+    fruity:   { label: "Fruity", families: ["fruity"], bg: ["#FFF4EE", "#FADADB"], blooms: ["rgba(240,120,110,.38)", "rgba(250,170,120,.38)", "rgba(190,60,90,.22)", "rgba(255,200,170,.4)"],
+                ink: "#2C1A1C", muted: "#6E5556", accent: "#B23A4A", gold: "#A0782C", glass: ["rgba(178,58,74,.28)", "rgba(255,190,180,.32)", "rgba(178,58,74,.4)"], juice: ["rgba(240,120,120,.6)", "rgba(180,40,70,.6)"], motif: "berries" },
+    gourmand: { label: "Gourmand", families: ["gourmand"], bg: ["#FBF2E6", "#EED8BE"], blooms: ["rgba(200,140,80,.38)", "rgba(240,200,150,.42)", "rgba(140,80,50,.2)", "rgba(250,225,190,.45)"],
+                ink: "#2E1E14", muted: "#6A5442", accent: "#8A4F2A", gold: "#A0782C", glass: ["rgba(138,79,42,.28)", "rgba(240,210,170,.32)", "rgba(138,79,42,.4)"], juice: ["rgba(220,160,90,.62)", "rgba(150,90,45,.62)"], motif: "vanilla" },
+    classic:  { label: "Swapfume classic", families: [], bg: ["#FCF6EF", "#F4E3DF"], blooms: ["rgba(214,150,160,.42)", "rgba(222,186,128,.34)", "rgba(196,128,150,.22)", "rgba(240,200,170,.35)"],
+                ink: "#2A211E", muted: "#6B5D57", accent: "#8C3B4A", gold: "#A0782C", glass: ["rgba(140,59,74,.30)", "rgba(230,170,180,.30)", "rgba(140,59,74,.42)"], juice: ["rgba(214,160,92,.55)", "rgba(180,110,70,.6)"], motif: "petals" }
+  };
+  // The style that best matches what someone lists (and wishes for): most common family wins.
+  function suggestedStyle(items, wishes = []) {
+    const score = {};
+    [...items.map((i) => [i.perfume, 2]), ...wishes.map((w) => [w.perfume, 1])].forEach(([p, w]) => {
+      const key = Object.keys(POST_STYLES).find((k) => POST_STYLES[k].families.includes(p?.family));
+      if (key) score[key] = (score[key] || 0) + w;
+    });
+    return Object.keys(score).sort((a, b) => score[b] - score[a])[0] || "classic";
+  }
+
+  async function postImage(items, styleKey = "classic") {
+    const S = POST_STYLES[styleKey] || POST_STYLES.classic;
+    const W = 1080, H = 1080, PAD = 92;
+    try { await Promise.all([document.fonts.load('600 80px "Cormorant Garamond"'), document.fonts.load('italic 500 80px "Cormorant Garamond"'), document.fonts.load('500 34px "Jost"'), document.fonts.load('400 30px "Jost"')]); } catch {}
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d");
+    const serif = '"Cormorant Garamond", Georgia, serif', sans = 'Jost, "Helvetica Neue", Arial, sans-serif';
+    // Seeded randomness so the same shelf always gets the same picture.
+    let seed = items.reduce((s, i) => s + String(i.perfume_id || i.id).length * 7 + (i.volume_ml || 1), 17);
+    const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+
+    // Background with soft blooms of colour, like scent in the air.
+    const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, S.bg[0]); bg.addColorStop(1, S.bg[1]);
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const bloom = (x, y, r, col) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, col); rg.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); };
+    bloom(900, 170, 420, S.blooms[0]); bloom(140, 980, 460, S.blooms[1]); bloom(1000, 900, 300, S.blooms[2]); bloom(220, 120, 260, S.blooms[3]);
+
+    // ---- Drawings for each style, kept to the edges so the text stays clear ----
+    const spots = [[700, 70], [1010, 420], [56, 560], [990, 660], [620, 1000], [44, 300], [1020, 1010], [1035, 210], [470, 60], [40, 830]];
+    const leafShape = (x, y, s, rot, col, stretch = 1) => { g.save(); g.translate(x, y); g.rotate(rot); g.scale(1, stretch); g.fillStyle = col; g.beginPath();
+      g.moveTo(0, -s); g.bezierCurveTo(s * .9, -s * .6, s * .7, s * .6, 0, s); g.bezierCurveTo(-s * .7, s * .6, -s * .9, -s * .6, 0, -s); g.fill();
+      g.strokeStyle = "rgba(255,255,255,.45)"; g.lineWidth = 1.2; g.beginPath(); g.moveTo(0, -s * .75); g.quadraticCurveTo(s * .12, 0, 0, s * .8); g.stroke(); g.restore(); };
+    const flower = (x, y, r, col, mid) => { g.save(); g.translate(x, y); g.rotate(rnd() * 6.28);
+      for (let k = 0; k < 5; k++) { g.rotate(Math.PI * 2 / 5); g.fillStyle = col; g.beginPath(); g.ellipse(0, -r * .55, r * .38, r * .6, 0, 0, Math.PI * 2); g.fill(); }
+      g.fillStyle = mid; g.beginPath(); g.arc(0, 0, r * .2, 0, Math.PI * 2); g.fill(); g.restore(); };
+    const sparkle = (x, y, s, col) => { g.save(); g.translate(x, y); g.fillStyle = col; g.beginPath();
+      g.moveTo(0, -s); g.quadraticCurveTo(0, 0, s, 0); g.quadraticCurveTo(0, 0, 0, s); g.quadraticCurveTo(0, 0, -s, 0); g.quadraticCurveTo(0, 0, 0, -s); g.fill(); g.restore(); };
+    const motifs = {
+      petals() { const cols = ["rgba(196,110,128,.55)", "rgba(222,150,160,.5)", "rgba(200,160,96,.45)", "rgba(170,90,110,.4)"];
+        spots.slice(0, 8).forEach(([x, y], k) => leafShape(x + rnd() * 30, y + rnd() * 30, 14 + rnd() * 12, rnd() * 6.28, cols[k % 4])); },
+      flowers() { const cols = ["rgba(226,120,150,.6)", "rgba(245,170,190,.65)", "rgba(200,90,130,.5)", "rgba(250,205,215,.8)"];
+        spots.forEach(([x, y], k) => { if (k % 3 === 2) leafShape(x, y, 14, rnd() * 6.28, "rgba(214,120,140,.45)"); else flower(x + rnd() * 20, y + rnd() * 20, 30 + rnd() * 22, cols[k % 4], "rgba(240,200,110,.9)"); }); },
+      leaves() { g.strokeStyle = "rgba(122,75,42,.10)"; g.lineWidth = 2;
+        for (let k = 0; k < 9; k++) { const y0 = 40 + k * 120; g.beginPath(); g.moveTo(0, y0); g.bezierCurveTo(300, y0 + 40, 700, y0 - 40, W, y0 + 20); g.stroke(); }
+        const cols = ["rgba(150,100,50,.55)", "rgba(110,120,60,.5)", "rgba(180,120,60,.5)", "rgba(120,80,45,.5)"];
+        spots.forEach(([x, y], k) => leafShape(x + rnd() * 20, y + rnd() * 20, 22 + rnd() * 14, rnd() * 6.28, cols[k % 4], 1.6)); },
+      smoke() { g.lineCap = "round";
+        for (let k = 0; k < 7; k++) { const x0 = 60 + rnd() * 960; g.strokeStyle = `rgba(231,181,98,${.08 + rnd() * .12})`; g.lineWidth = 2 + rnd() * 3; g.beginPath(); g.moveTo(x0, H);
+          g.bezierCurveTo(x0 - 120 + rnd() * 240, H * .7, x0 - 160 + rnd() * 320, H * .4, x0 - 80 + rnd() * 160, H * .05); g.stroke(); }
+        for (let k = 0; k < 60; k++) { g.fillStyle = `rgba(240,200,120,${.2 + rnd() * .5})`; g.beginPath(); g.arc(rnd() * W, rnd() * H, .8 + rnd() * 2.2, 0, Math.PI * 2); g.fill(); }
+        spots.slice(0, 5).forEach(([x, y]) => sparkle(x, y, 8 + rnd() * 8, "rgba(240,205,130,.7)")); },
+      citrus() { spots.forEach(([x, y], k) => {
+          if (k % 2) { leafShape(x, y, 22, rnd() * 6.28, "rgba(95,150,70,.5)", 1.5); return; }
+          const r = 32 + rnd() * 18, col = k % 4 === 0 ? [230, 190, 40] : [240, 150, 50];
+          g.save(); g.translate(x, y); g.rotate(rnd() * 6.28);
+          g.fillStyle = `rgba(${col},.75)`; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+          g.fillStyle = "rgba(255,250,225,.85)"; g.beginPath(); g.arc(0, 0, r * .86, 0, Math.PI * 2); g.fill();
+          g.fillStyle = `rgba(${col},.55)`; for (let s = 0; s < 8; s++) { g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r * .78, s * Math.PI / 4 + .06, (s + 1) * Math.PI / 4 - .06); g.closePath(); g.fill(); }
+          g.restore(); }); },
+      waves() { g.lineWidth = 2.5;
+        for (let k = 0; k < 6; k++) { const y0 = 700 + k * 52; g.strokeStyle = `rgba(46,106,146,${.08 + k * .02})`; g.beginPath();
+          for (let x = 0; x <= W; x += 10) g.lineTo(x, y0 + Math.sin(x / 70 + k) * 12); g.stroke(); }
+        for (let k = 0; k < 22; k++) { const [x, y] = spots[k % spots.length]; g.strokeStyle = "rgba(70,140,190,.45)"; g.lineWidth = 1.5; g.beginPath();
+          g.arc(x + rnd() * 70 - 35, y + rnd() * 70 - 35, 4 + rnd() * 12, 0, Math.PI * 2); g.stroke(); } },
+      berries() { spots.forEach(([x, y], k) => {
+          if (k % 3 === 2) { leafShape(x, y, 18, rnd() * 6.28, "rgba(100,150,80,.5)", 1.4); return; }
+          const col = k % 2 ? "rgba(190,40,70,.75)" : "rgba(120,40,90,.7)";
+          for (let b = 0; b < 3; b++) { const bx = x + Math.cos(b * 2.1) * 18, by = y + Math.sin(b * 2.1) * 18;
+            g.fillStyle = col; g.beginPath(); g.arc(bx, by, 16, 0, Math.PI * 2); g.fill();
+            g.fillStyle = "rgba(255,255,255,.5)"; g.beginPath(); g.arc(bx - 5, by - 5, 4, 0, Math.PI * 2); g.fill(); } }); },
+      vanilla() { g.lineCap = "round";
+        spots.forEach(([x, y], k) => {
+          if (k % 2) { flower(x, y, 26, "rgba(250,236,200,.9)", "rgba(220,180,90,.9)"); return; }
+          g.strokeStyle = "rgba(70,40,25,.6)"; g.lineWidth = 6; g.beginPath(); const a = rnd() * 6.28;
+          g.moveTo(x - Math.cos(a) * 60, y - Math.sin(a) * 60); g.quadraticCurveTo(x + 15, y - 15, x + Math.cos(a) * 60, y + Math.sin(a) * 60); g.stroke(); });
+        for (let k = 0; k < 16; k++) { const [x, y] = spots[k % spots.length]; sparkle(x + rnd() * 90 - 45, y + rnd() * 90 - 45, 4 + rnd() * 5, "rgba(255,250,235,.95)"); } }
+    };
+    g.save(); motifs[S.motif](); g.restore();
+
+    // Perfume bottle with scent wisps, top right.
+    g.save(); g.translate(850, 345); g.scale(1.22, 1.22);
+    g.strokeStyle = S.gold; g.globalAlpha = .6; g.lineWidth = 2.2; g.lineCap = "round";
+    for (let k = 0; k < 3; k++) { const ox = -8 + k * 14; g.beginPath(); g.moveTo(ox, -150);
+      g.bezierCurveTo(ox - 40, -190 - k * 10, ox + 50, -220, ox - 10 + k * 8, -262 - k * 18);
+      g.bezierCurveTo(ox - 50, -290 - k * 10, ox + 30, -300, ox + 6, -320 - k * 6); g.globalAlpha = .6 - k * .15; g.stroke(); }
+    g.globalAlpha = 1;
+    const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+    const glass = g.createLinearGradient(-85, 0, 85, 0); glass.addColorStop(0, S.glass[0]); glass.addColorStop(.45, S.glass[1]); glass.addColorStop(1, S.glass[2]);
+    rr(-85, -90, 170, 200, 34); g.fillStyle = glass; g.fill(); g.strokeStyle = S.glass[2]; g.lineWidth = 2.5; g.stroke();
+    g.save(); rr(-85, -90, 170, 200, 34); g.clip();
+    const juice = g.createLinearGradient(0, -20, 0, 110); juice.addColorStop(0, S.juice[0]); juice.addColorStop(1, S.juice[1]);
+    g.fillStyle = juice; g.fillRect(-90, -10, 180, 130); g.restore();
+    g.fillStyle = "rgba(255,255,255,.55)"; rr(-62, -72, 16, 140, 8); g.fill();
+    g.fillStyle = S.dark ? "rgba(30,16,18,.85)" : "rgba(252,246,239,.9)"; rr(-52, 10, 104, 52, 6); g.fill(); g.strokeStyle = S.gold; g.lineWidth = 1.5; g.stroke();
+    g.fillStyle = S.accent; g.font = `italic 500 26px ${serif}`; g.textAlign = "center"; g.fillText("Swap", 0, 44);
+    g.fillStyle = S.glass[2]; g.fillRect(-18, -112, 36, 24);
+    const gold = g.createLinearGradient(-36, 0, 36, 0); gold.addColorStop(0, "#9A7230"); gold.addColorStop(.5, "#E3C27A"); gold.addColorStop(1, "#8E6A2A");
+    g.fillStyle = gold; rr(-36, -172, 72, 62, 10); g.fill();
+    g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(-24, -166, 8, 50);
+    g.restore();
+
+    // Header
+    g.textAlign = "left"; g.textBaseline = "alphabetic";
+    g.fillStyle = S.gold; g.font = `500 24px ${sans}`;
+    g.fillText("S W A P F U M E", PAD, 132);
+    const name = state.profile?.display_name || "My";
+    g.fillStyle = S.ink; let fs = 88; g.font = `italic 500 ${fs}px ${serif}`;
+    const t1 = `${name}'s`;
+    while (g.measureText(t1).width > 640 && fs > 50) { fs -= 4; g.font = `italic 500 ${fs}px ${serif}`; }
+    g.fillText(t1, PAD, 228);
+    g.font = `600 ${fs}px ${serif}`; g.fillText("scent wardrobe", PAD, 228 + fs * .95);
+    const fy = 228 + fs * .95 + 40;
+    g.strokeStyle = S.gold; g.lineWidth = 1.6; g.beginPath(); g.moveTo(PAD, fy); g.lineTo(PAD + 120, fy); g.stroke();
+    g.fillStyle = S.gold; g.save(); g.translate(PAD + 136, fy); g.rotate(Math.PI / 4); g.fillRect(-5, -5, 10, 10); g.restore();
+    g.beginPath(); g.moveTo(PAD + 152, fy); g.lineTo(PAD + 272, fy); g.stroke();
+    g.fillStyle = S.muted; g.font = `italic 500 34px ${serif}`; g.fillText("open for swapping", PAD + 300, fy + 10);
+
+    // The list
+    const fit = (text, max) => { if (g.measureText(text).width <= max) return text; while (text.length > 1 && g.measureText(text + "…").width > max) text = text.slice(0, -1); return text.trimEnd() + "…"; };
+    const maxRows = 6, rows = items.slice(0, items.length > maxRows ? maxRows - 1 : maxRows);
+    const slots = rows.length + (items.length > rows.length ? 1 : 0);
+    const top = fy + 100, avail = H - 190 - top, rowH = Math.min(110, avail / slots);
+    let y = top + Math.max(0, (avail - rowH * slots) / 2);
+    const maxW = W - PAD * 2 - 50;
+    for (const i of rows) {
+      const p = i.perfume || {};
+      g.fillStyle = S.accent; g.font = `400 26px ${serif}`; g.fillText("✦", PAD, y - 4);
+      g.fillStyle = S.gold; g.font = `500 19px ${sans}`;
+      g.fillText(fit((p.brand || "").toUpperCase().split("").join(" "), maxW), PAD + 42, y - 34);
+      g.fillStyle = S.ink; g.font = `italic 500 42px ${serif}`;
+      const nm = fit(p.name || "", maxW * .62); g.fillText(nm, PAD + 42, y + 4);
+      const nw = g.measureText(nm).width;
+      g.fillStyle = S.muted; g.font = `400 22px ${sans}`;
+      g.fillText(fit([p.concentration, SIZE_LABEL[i.size], i.volume_ml ? `${+i.volume_ml} ml` : ""].filter(Boolean).join(" · "), maxW - nw - 24), PAD + 42 + nw + 22, y - 2);
+      y += rowH;
+    }
+    if (items.length > rows.length) { g.fillStyle = S.accent; g.font = `italic 500 34px ${serif}`; g.fillText(`…and ${items.length - rows.length} more to discover`, PAD + 42, y - 6); }
+
+    // Footer
+    g.strokeStyle = S.gold; g.globalAlpha = .5; g.lineWidth = 1; g.beginPath(); g.moveTo(PAD, H - 140); g.lineTo(W - PAD, H - 140); g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = S.ink; g.font = `600 40px ${serif}`; g.fillText("swapfume.com", PAD, H - 82);
+    g.fillStyle = S.accent; g.font = `italic 500 30px ${serif}`; g.textAlign = "right";
+    g.fillText("Swap the scents you love", W - PAD, H - 84);
+    return new Promise((res) => c.toBlob((b) => res({ blob: b, url: c.toDataURL("image/png") }), "image/png"));
+  }
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch {
+      const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
+      document.body.appendChild(t); t.select(); let ok = false; try { ok = document.execCommand("copy"); } catch {} t.remove(); return ok;
+    }
+  }
+
+  async function sharePostDialog(items, wishes, startNet = "facebook") {
+    const suggested = suggestedStyle(items, wishes);
+    let style = suggested, net = startNet;
+    let img = await postImage(items, style);
+    const toFile = (im) => im.blob ? new File([im.blob], "swapfume-swap-shelf.png", { type: "image/png" }) : null;
+    let file = toFile(img);
+    const canShareFile = !!(file && navigator.canShare?.({ files: [file] }));
+    const HOW = {
+      facebook: "Facebook doesn't let apps fill in a post for you, so copy the text and paste it in, then add the picture.",
+      instagram: canShareFile ? "Tap Share picture, pick Instagram, then paste the caption (it's copied for you)." : "Instagram posts are made in the Instagram app. Save the picture, send it to your phone, then post it with the caption below.",
+      reddit: "Reddit opens with your title and text already filled in. Pick a perfume or swap community, and check its rules first: many ask for a set title format or don't allow swap posts."
+    };
+    openModal(html`<div class="dlg share-dlg"><h3>Share your swap shelf</h3>
+      <div class="tabs net-tabs" role="tablist">${Object.entries(NETWORKS).map(([k, n]) => html`<button role="tab" data-net="${k}" aria-selected="${k === net}">${n.icon}<span>${n.label}</span></button>`)}</div>
+      <p class="muted small" id="netHow"></p>
+      <div id="picBox">
+        <fieldset class="style-pick"><legend>Picture style</legend>
+          ${Object.entries(POST_STYLES).map(([k, st]) => html`<label class="style-chip" style="--a:${st.bg[0]};--b:${st.accent}"><input type="radio" name="postStyle" value="${k}" ${k === style ? raw("checked") : ""}><span>${st.label}${k === suggested && k !== "classic" ? html` <em>· your taste</em>` : ""}</span></label>`)}
+        </fieldset>
+        <img class="share-preview" id="postPic" src="${img.url}" alt="Picture listing your perfumes open to trade">
+      </div>
+      <div class="field" id="titleField" hidden><label for="postTitle">Title</label><input id="postTitle" type="text" maxlength="300"></div>
+      <div class="field"><label for="postText" id="postTextLabel">Post text</label><textarea id="postText" rows="8"></textarea></div>
+      ${wishes.length ? html`<label class="switch small"><input type="checkbox" id="postWishes"> Also list what I'm hoping to find</label>` : ""}
+      <p class="hint">Only share what you're happy to make public. Never post your address. Swaps stay perfume-for-perfume, so no prices.</p>
+      <div class="dlg-actions" id="netActions"></div></div>`, (m) => {
+      const ta = $("#postText", m), cb = $("#postWishes", m), tt = $("#postTitle", m);
+      let edited = false; ta.addEventListener("input", () => { edited = true; });
+      const fillText = () => { ta.value = postText(items, wishes, cb?.checked, net); edited = false; };
+      const savePic = () => { const a = document.createElement("a"); a.href = img.url; a.download = "swapfume-swap-shelf.png"; document.body.appendChild(a); a.click(); a.remove(); };
+      const label = () => NETWORKS[net].label;
+      const draw = () => {
+        $$("[data-net]", m).forEach((b) => b.setAttribute("aria-selected", b.dataset.net === net));
+        $("#netHow", m).textContent = HOW[net];
+        $("#titleField", m).hidden = net !== "reddit";
+        $("#postTextLabel", m).textContent = net === "instagram" ? "Caption (you can edit it)" : net === "reddit" ? "Text (you can edit it)" : "Post text (you can edit it)";
+        if (net === "reddit" && !tt.value) tt.value = postTitle(items);
+        const n = NETWORKS[net];
+        $("#netActions", m).innerHTML = val(html`<button class="btn ghost" data-close>Close</button>
+          ${net === "reddit" ? html`<button class="btn secondary" id="postSave">Save picture</button><button class="btn" id="postGo">${n.icon}<span>Open Reddit</span></button>`
+            : canShareFile ? html`<button class="btn secondary" id="postCopy">Copy text</button><button class="btn" id="postShare">${n.icon}<span>Share picture…</span></button>`
+            : html`<button class="btn secondary" id="postSave">Save picture</button><button class="btn secondary" id="postCopy">Copy text</button><button class="btn" id="postGo">${n.icon}<span>Copy & open ${n.label}</span></button>`}`);
+        $("[data-close]", $("#netActions", m)).addEventListener("click", () => modal.close());
+        const copyB = $("#postCopy", m);
+        if (copyB) copyB.addEventListener("click", async () => toast(await copyText(ta.value) ? `Text copied. Paste it into your ${label()} post.` : "Couldn't copy. Select the text and copy it yourself."));
+        const saveB = $("#postSave", m);
+        if (saveB) saveB.addEventListener("click", () => { savePic(); toast(`Picture saved. Add it to your ${label()} post.`); });
+        const goB = $("#postGo", m);
+        if (goB) goB.addEventListener("click", async () => {
+          if (net === "reddit") {
+            const body = ta.value.length > 3500 ? ta.value.slice(0, 3500) + "…" : ta.value;
+            window.open("https://www.reddit.com/submit?type=TEXT&title=" + encodeURIComponent(tt.value) + "&text=" + encodeURIComponent(body), "_blank", "noopener");
+            toast("Reddit opened with your post filled in. To add the picture, save it and post it in the comments or as an image post.");
+            return;
+          }
+          const ok = await copyText(ta.value);
+          window.open(net === "facebook" ? "https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(SITE_URL) : "https://www.instagram.com/", "_blank", "noopener");
+          toast(ok ? `Text copied. Paste it into your ${label()} post, then add the saved picture.` : `${label()} opened. Copy the text from here and paste it in.`);
+        });
+        const sh = $("#postShare", m);
+        if (sh) sh.addEventListener("click", async () => {
+          const ok = await copyText(ta.value);
+          if (ok) toast(`Text copied. Pick ${label()}, then paste the text into your post.`);
+          try { await navigator.share({ files: [file], text: ta.value, title: "My Swapfume swap shelf" }); }
+          catch (e) { if (e?.name !== "AbortError") toast("Couldn't open sharing. Try Copy text instead.", "error"); }
+        });
+      };
+      fillText(); draw();
+      $$("[data-net]", m).forEach((b) => b.addEventListener("click", () => {
+        if (b.dataset.net === net) return;
+        if (edited && !confirm("Switching will replace your edited text with a new one for " + NETWORKS[b.dataset.net].label + ". Continue?")) return;
+        net = b.dataset.net; fillText(); draw();
+      }));
+      if (cb) cb.addEventListener("change", fillText);
+      $$("[name=postStyle]", m).forEach((r) => r.addEventListener("change", async () => {
+        style = r.value; const pic = $("#postPic", m); pic.style.opacity = ".5";
+        img = await postImage(items, style); file = toFile(img); pic.src = img.url; pic.style.opacity = "";
+      }));
+    });
+  }
+
   async function pageCollection(params) {
     const tab = params.get("tab") === "want" ? "want" : "have";
     const [items, wishes] = await Promise.all([api.listItems({ ownerId: state.uid }), api.listWishes({ userId: state.uid })]);
@@ -625,9 +927,13 @@
     $$("[data-t]").forEach((b) => b.addEventListener("click", () => go(`/collection${b.dataset.t === "want" ? "?tab=want" : ""}`)));
     const body = $("#tabBody");
     if (tab === "have") {
-      body.innerHTML = val(html`<div class="row between" style="margin-bottom:14px"><p class="muted small" style="margin:0">${items.filter((i) => i.tradeable).length} open to trade</p><button class="btn" id="addItem">Add a perfume</button></div>
+      const openItems = items.filter((i) => i.tradeable && !i.is_hidden);
+      body.innerHTML = val(html`<div class="row between" style="margin-bottom:14px"><p class="muted small" style="margin:0">${items.filter((i) => i.tradeable).length} open to trade</p>
+          <div class="row" style="gap:8px"><button class="btn" id="addItem">Add a perfume</button></div></div>
+        ${openItems.length ? html`<div class="share-row"><span class="muted small">Share what you're trading:</span>${Object.entries(NETWORKS).map(([k, n]) => html`<button class="btn small secondary net-btn" data-share="${k}">${n.icon}<span>${n.label}</span></button>`)}</div>` : ""}
         ${items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { mine: true }))}</div>` : html`<div class="empty"><h3>Your shelf is empty</h3><p>Add the samples, decants and bottles you own. Mark the ones you'd trade.</p></div>`}`);
       $("#addItem").addEventListener("click", () => itemForm(null));
+      $$("[data-share]", body).forEach((b) => b.addEventListener("click", () => run(b, async () => sharePostDialog(openItems, wishes, b.dataset.share))));
       $$("[data-edit]", body).forEach((b) => b.addEventListener("click", () => itemForm(items.find((i) => i.id == b.dataset.edit))));
       $$("[data-toggle]", body).forEach((b) => b.addEventListener("click", () => run(b, async () => {
         const i = items.find((x) => x.id == b.dataset.toggle); await api.updateItem(i.id, { tradeable: !i.tradeable }); route();
@@ -646,7 +952,7 @@
     }
   }
 
-  async function pagePerfume(id) {
+  async function pagePerfume(id, params) {
     const p = await api.getPerfume(id);
     if (!p) return setView(html`<div class="empty"><h3>Perfume not found</h3></div>`);
     const [items, wishes, mineW, memberPhoto, myPhoto] = await Promise.all([
@@ -690,7 +996,7 @@
     const iw = $("#iWant"); if (iw) iw.addEventListener("click", () => run(iw, async () => { await api.addWish(p.id); toast("Added to your wishlist."); route(); }));
     $("#suggestNotes").addEventListener("click", () => notesDialog(p));
     const ap = $("#addPhoto"); if (ap) ap.addEventListener("click", () => photoSuggestDialog(p));
-    perfumeReviews(p, $("#prBox"));
+    perfumeReviews(p, $("#prBox"), { focus: params?.get("review") === "1" });
     const yf = $("#yearForm");
     if (yf) yf.addEventListener("submit", (e) => { e.preventDefault(); run($("#yearSave"), async () => { await api.setPerfumeYear(p.id, $("#yearIn").value); toast("Year saved."); route(); }); });
     const f = $("#imgForm");
@@ -721,7 +1027,7 @@
     };
     return html`<div class="tagsums">${block("Longevity", "longevity")}${block("Sillage (how far it projects)", "sillage")}${block("Best seasons", "seasons", true)}${block("Day or night", "daytimes", true)}</div>`;
   }
-  async function perfumeReviews(p, box) {
+  async function perfumeReviews(p, box, { focus = false } = {}) {
     const all = await api.listPerfumeReviews(p.id);
     const mine = all.find((r) => r.user_id === state.uid);
     const visible = all.filter((r) => !r.is_hidden);
@@ -761,14 +1067,18 @@
         if (!rating) { toast("Pick a star rating.", "error"); return; }
         run($("#prSave", box), async () => {
           await api.savePerfumeReview({ perfumeId: p.id, rating, body: $("#prBody", box).value, longevity: $("#prLon", box).value, sillage: $("#prSil", box).value, seasons: fd.getAll("seasons"), daytimes: fd.getAll("daytimes") });
-          toast(mine ? "Review updated." : "Thanks for your review!"); route();
+          toast(mine ? "Review updated." : "Thanks for your review!");
+          if (/[?&]review=1/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + location.hash.replace(/[?&]review=1/, ""));
+          route();
         });
       });
       $$("[data-help]", box).forEach((x) => x.addEventListener("click", () => run(x, async () => { await api.voteHelpful(x.dataset.help, x.dataset.on === "true"); perfumeReviews(p, box); })));
       $$("[data-repr]", box).forEach((x) => x.addEventListener("click", () => reportDialog({ targetUserId: x.dataset.author || null, targetPerfumeReviewId: x.dataset.repr, what: "this review" })));
       $$("[data-hider]", box).forEach((x) => x.addEventListener("click", () => run(x, async () => { await api.setPerfumeReviewHidden(x.dataset.hider, x.dataset.h === "true"); route(); })));
     };
-    draw(false);
+    // Coming from "Write a review": open the form (or your review, ready to edit) and bring it into view.
+    draw(focus && !!mine);
+    if (focus) setTimeout(() => { const f = $("#prForm", box); (f || box).scrollIntoView({ behavior: "smooth", block: "center" }); const first = $("[name=prRating]", box); if (first) first.focus({ preventScroll: true }); }, 60);
   }
 
   function notesDialog(p) {

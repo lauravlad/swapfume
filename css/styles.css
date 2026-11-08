@@ -473,3 +473,25 @@ dialog::backdrop { background: rgba(38, 28, 26, .45); backdrop-filter: blur(3px)
 body.signed-out main, body.signed-out .site-footer { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
 body.signed-out main { padding-top: calc(20px + env(safe-area-inset-top)); }
 .demo-banner { position: relative; z-index: 19; }
+
+/* ---- Post on Facebook ---- */
+.fb-icon { width: 17px; height: 17px; fill: currentColor; flex: none; }
+#fbPost, #postFb { display: inline-flex; align-items: center; gap: 7px; }
+.share-dlg { max-width: 560px; }
+.share-preview { display: block; width: 100%; max-width: 320px; margin: 10px auto 14px; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(42, 33, 30, .08); }
+.share-dlg textarea { width: 100%; font: inherit; font-size: .92rem; line-height: 1.45; }
+.style-pick { border: 0; padding: 0; margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.style-pick legend { font-weight: 600; font-size: .92rem; margin-bottom: 6px; padding: 0; }
+.style-chip { position: relative; cursor: pointer; }
+.style-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.style-chip span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .85rem; }
+.style-chip span::before { content: ""; width: 16px; height: 16px; border-radius: 50%; background: linear-gradient(135deg, var(--a) 45%, var(--b) 55%); border: 1px solid rgba(0,0,0,.12); flex: none; }
+.style-chip em { font-style: normal; color: var(--muted); font-size: .8rem; }
+.style-chip input:checked + span { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.style-chip input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 2px; }
+.share-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 16px; }
+.net-btn, .net-tabs button, #postGo, #postShare { display: inline-flex; align-items: center; gap: 7px; }
+.net-tabs { margin: 6px 0 10px; }
+.tile .review-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--accent); font-weight: 500; text-decoration: none; }
+.tile .review-link span { color: var(--gold); }
+.tile .review-link:hover { text-decoration: underline; }
