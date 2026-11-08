@@ -341,6 +341,7 @@
     async getPartnerAddress(swapId) {
       const s = mySwap(swapId);
       if (!["accepted", "completed"].includes(s.status) || s.method === "meetup") return null;
+      if (s.is_gift && s.proposer_id !== uid) return null; // the receiver never sees the giver's address
       const other = s.proposer_id === uid ? s.recipient_id : s.proposer_id;
       if (!other) return null; // partner deleted their account
       return clone(db.addresses.find((a) => a.user_id === other) || null);
@@ -431,9 +432,31 @@
       const ok = (ids, owner) => ids.every((id) => db.items.find((i) => i.id === Number(id) && i.owner_id === owner && i.tradeable && !i.is_hidden));
       if (!ok(myItemIds, uid)) fail("Some of your items are not available for trade.");
       if (!ok(theirItemIds, recipientId)) fail("Some of their items are no longer available.");
-      const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
+      const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, is_gift: false, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
       db.swaps.push(s);
       [...myItemIds, ...theirItemIds].forEach((id) => {
+        const i = db.items.find((x) => x.id === Number(id));
+        db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml });
+      });
+      save(); return s.id;
+    },
+    // Gifts: same rules as offer_gift() in migration 013.
+    async offerGift({ recipientId, myItemIds, message, method = "mail" }) {
+      active(); await tick();
+      if (!["mail", "meetup"].includes(method)) fail("Choose mail or meeting in person.");
+      if (recipientId === uid) fail("You cannot give a gift to yourself.");
+      if (!prof(recipientId) || prof(recipientId).is_banned || blockedWith(recipientId)) fail("This member is not available.");
+      if (!myItemIds?.length) fail("Pick at least one perfume to give.");
+      if (method === "meetup") {
+        const d = rawDistance(recipientId);
+        if (d == null) fail("Meeting in person needs both of you to add a ZIP code under Me.");
+        if (d > 20) fail("Meeting in person is for members 20 miles or less apart.");
+      }
+      if (db.swaps.filter((s) => s.proposer_id === uid && s.is_gift && s.status === "proposed").length >= 5) fail("You have 5 gift offers waiting for an answer. Wait for those first.");
+      if (!myItemIds.every((id) => db.items.find((i) => i.id === Number(id) && i.owner_id === uid && i.tradeable && !i.is_hidden))) fail("Some of your items are not available.");
+      const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, is_gift: true, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
+      db.swaps.push(s);
+      myItemIds.forEach((id) => {
         const i = db.items.find((x) => x.id === Number(id));
         db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml });
       });
@@ -503,6 +526,7 @@
       if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
       if (s.method === "meetup") fail("This swap is a meet-up — confirm when you have met.");
       if (s.status !== "accepted") fail("You can mark shipping only on an accepted swap.");
+      if (s.is_gift && s.proposer_id !== uid) fail("This is a gift to you — there is nothing for you to ship.");
       const k = s.proposer_id === uid ? "proposer_shipped_at" : "recipient_shipped_at";
       s[k] = s[k] || now(); s.updated_at = now(); save();
     },
@@ -511,10 +535,11 @@
       if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
       if (s.status !== "accepted") fail("This swap is not in progress.");
       const mine = s.proposer_id === uid;
+      if (s.is_gift && mine) fail("You are the giver — the receiver confirms when it arrives.");
       if (!(mine ? s.recipient_shipped_at : s.proposer_shipped_at)) fail("They have not marked their package as shipped yet.");
       const k = mine ? "proposer_received_at" : "recipient_received_at";
       s[k] = s[k] || now();
-      if (s.proposer_received_at && s.recipient_received_at) s.status = "completed";
+      if (s.recipient_received_at && (s.is_gift || s.proposer_received_at)) s.status = "completed";
       s.updated_at = now(); save();
     },
 

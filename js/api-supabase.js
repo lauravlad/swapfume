@@ -174,6 +174,9 @@
       async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail" }) {
         return check(await sb.rpc("propose_swap", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_their_items: theirItemIds.map(Number), p_message: message || "", p_method: method }));
       },
+      async offerGift({ recipientId, myItemIds, message, method = "mail" }) {
+        return check(await sb.rpc("offer_gift", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_message: message || "", p_method: method }));
+      },
       async setMeetPlan(id, plan) { check(await sb.rpc("set_meet_plan", { p_swap: Number(id), p_plan: plan || "" })); },
       async markMet(id) { check(await sb.rpc("mark_met", { p_swap: Number(id) })); },
 

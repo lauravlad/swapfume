@@ -31,7 +31,7 @@
 <h2>Who can see what</h2>
 <ul>
   <li><b>Other members</b> can see your public profile, what you mark as open to trade, your wishlist, your completed-swap count, reviews, and the perfume reviews you write (with your display name). Who voted "Helpful" is not shown.</li>
-  <li><b>Your address</b> is shown only to the other person in a swap by mail, and only after you have <i>both</i> accepted it. It is never shared for swaps where you meet in person.</li>
+  <li><b>Your address</b> is shown only to the other person in a swap by mail, and only after you have <i>both</i> accepted it. It is never shared for swaps where you meet in person. For a <b>gift</b> by mail, only the person giving sees the receiver's address — never the other way round.</li>
   <li><b>Your ZIP code</b> is never shown to anyone. Other members see only your city (if you add one), a rounded distance such as "about 8 miles" (only up to 50 miles away), and a small map of your general area on your profile. That map is centred on a point we blur by several miles and has no pin, so it shows the area, never your exact location. People you've blocked, or who blocked you, see none of this.</li>
   <li><b>Photos</b> you upload are stored at a public web address so they can be displayed; anyone with the link could view them. Don't include personal details in photos.</li>
   <li><b>Our admins</b> can see what's needed to moderate: listings, reports, swaps and member accounts.</li>
@@ -79,6 +79,8 @@
 
 <h2>No money, no selling</h2>
 <p>${APP} is for swapping only. You may not buy, sell, or ask for or offer money, gift cards, payment apps or anything else of money value — not even "just for shipping". Each person pays for and arranges their own shipping. Listings or messages that try to sell will be removed.</p>
+<p>You may also <b>give</b> perfume as a gift, with nothing asked in return. Only the giver can offer a gift; please don't ask other members for free perfume.</p>
+<p>When nobody is swapping a perfume, ${APP} may show a link to search for or buy a sample elsewhere. Any purchase is between you and that shop; ${OP} is not part of it. If ${OP} ever earns a commission from such a link, we'll say so next to it.</p>
 
 <h2>Shipping safely and legally</h2>
 <ul>

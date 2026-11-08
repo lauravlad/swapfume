@@ -338,12 +338,21 @@
     const give = s.items.filter((x) => x.from_user_id === uid), get = s.items.filter((x) => x.from_user_id !== uid);
     const n = other ? other.display_name || "them" : "Former member";
     let label, needsMe = false, tone = "";
-    if (s.status === "proposed") { needsMe = !iAmP; label = iAmP ? `Waiting for ${n} to answer` : `${n} proposed a swap`; tone = needsMe ? "rose" : "gold"; }
+    const gift = !!s.is_gift;
+    if (s.status === "proposed") { needsMe = !iAmP; label = iAmP ? `Waiting for ${n} to answer` : gift ? `${n} offered you a gift` : `${n} proposed a swap`; tone = needsMe ? "rose" : "gold"; }
     else if (s.status === "declined") { label = "Declined"; tone = "grey"; }
     else if (s.status === "cancelled") { label = "Withdrawn"; tone = "grey"; }
     else if (s.status === "accepted" && s.method === "meetup") {
       if (!my.received) { needsMe = true; label = s.meet_plan ? "Meet up, then confirm" : "Plan your meet-up"; tone = "rose"; }
       else { label = `Waiting for ${n} to confirm you met`; tone = "gold"; }
+    }
+    else if (s.status === "accepted" && gift && iAmP) {
+      if (!my.shipped) { needsMe = true; label = "Ship your gift"; tone = "rose"; }
+      else { label = `Waiting for ${n} to confirm it arrived`; tone = "gold"; }
+    }
+    else if (s.status === "accepted" && gift) {
+      if (!their.shipped) { label = `Waiting for ${n} to ship your gift`; tone = "gold"; }
+      else { needsMe = true; label = "Confirm your gift arrived"; tone = "rose"; }
     }
     else if (s.status === "accepted") {
       if (!my.shipped) { needsMe = true; label = "Ship your package"; tone = "rose"; }
@@ -353,7 +362,7 @@
     } else if (s.status === "completed") {
       if (!myReviewed) { needsMe = true; label = "Leave a review"; tone = "rose"; } else { label = "Completed"; tone = "ok"; }
     }
-    return { iAmP, other, name: n, my, their, give, get, label, needsMe, tone };
+    return { iAmP, gift, other, name: n, my, their, give, get, label, needsMe, tone };
   }
   async function myReviewedSet() {
     const rs = await api.listReviews({ reviewerId: state.uid });
@@ -625,6 +634,19 @@
   const IG_ICON = raw(`<svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4zm0 7.7a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm4.9-8.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM21.9 7.1c-.1-1.6-.4-3-1.6-4.2S17.6 1.3 16 1.2C14.3 1.1 9.7 1.1 8 1.2c-1.6.1-3 .4-4.2 1.6S2.2 5.5 2.1 7.1C2 8.8 2 13.2 2.1 14.9c.1 1.6.4 3 1.6 4.2s2.6 1.5 4.2 1.6c1.7.1 6.3.1 8 0 1.6-.1 3-.4 4.2-1.6s1.5-2.6 1.6-4.2c.1-1.7.1-6.1 0-7.8zm-2.2 9.6a3.2 3.2 0 0 1-1.8 1.8c-1.3.5-4.3.4-5.9.4s-4.6.1-5.9-.4a3.2 3.2 0 0 1-1.8-1.8c-.5-1.3-.4-4.3-.4-5.7s-.1-4.4.4-5.7A3.2 3.2 0 0 1 6.1 3.5C7.4 3 10.4 3.1 12 3.1s4.6-.1 5.9.4a3.2 3.2 0 0 1 1.8 1.8c.5 1.3.4 4.3.4 5.7s.1 4.4-.4 5.7z"/></svg>`);
   const RD_ICON = raw(`<svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.1a2.2 2.2 0 0 0-3.7-1.6 10.7 10.7 0 0 0-5.8-1.8l1-4.6 3.2.7a1.6 1.6 0 1 0 .2-1l-3.6-.8a.5.5 0 0 0-.6.4l-1.1 5.3a10.8 10.8 0 0 0-5.9 1.8 2.2 2.2 0 1 0-2.4 3.6 4.3 4.3 0 0 0 0 .6c0 3.3 3.8 5.9 8.6 5.9s8.6-2.6 8.6-5.9a4.3 4.3 0 0 0 0-.6 2.2 2.2 0 0 0 1.5-2zM7.5 13.6a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm8.4 4c-1 .9-2.7 1.1-3.9 1.1s-2.9-.2-3.9-1.1a.4.4 0 0 1 .6-.6c.7.7 2 .9 3.3.9s2.6-.2 3.3-.9a.4.4 0 0 1 .6.6zm-.4-2.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`);
   const SITE_URL = CFG.PUBLIC_SITE_URL || "https://swapfume.com/";
+  // "Buy a sample" pointer for when nobody is swapping a perfume (see BUY_SAMPLE_* in js/config.js).
+  function buyUrl(p) {
+    const q = `${p.brand} ${p.name} sample decant`;
+    return CFG.BUY_SAMPLE_URL ? CFG.BUY_SAMPLE_URL.replace("{q}", encodeURIComponent(q)) : "https://www.google.com/search?q=" + encodeURIComponent(q);
+  }
+  const buyLabel = () => CFG.BUY_SAMPLE_SHOP ? `Find a sample at ${CFG.BUY_SAMPLE_SHOP}` : "Search for a sample to buy";
+  const buyNote = () => CFG.BUY_SAMPLE_AFFILIATE ? `Swapfume may earn a small commission from ${CFG.BUY_SAMPLE_SHOP || "this shop"}, at no cost to you.` : `This opens ${CFG.BUY_SAMPLE_SHOP || "a web search"}. Swapfume isn't part of any purchase.`;
+  function buyHint(p) {
+    return html`<div class="notice buy-hint"><div class="grow"><b>Not available to swap right now.</b> Add it to your wishlist and you'll see it in Matches when someone lists it. Can't wait?
+      <div style="margin-top:8px"><a class="btn small secondary" href="${buyUrl(p)}" target="_blank" rel="noopener sponsored">${buyLabel()} ↗</a></div>
+      <p class="hint" style="margin:6px 0 0">${buyNote()}</p></div></div>`;
+  }
+  const GIFT_ICON = raw(`<svg class="gift-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12M12 8c-1.5-3-5-3.5-5-1.2C7 8 9.5 8 12 8zm0 0c1.5-3 5-3.5 5-1.2C17 8 14.5 8 12 8z"/></svg>`);
   const NETWORKS = {
     facebook: { label: "Facebook", icon: FB_ICON },
     instagram: { label: "Instagram", icon: IG_ICON },
@@ -944,7 +966,7 @@
         ${wishes.length ? html`<ul class="list card" style="margin-top:16px">${wishes.map((w) => {
           const n = counts.filter((i) => i.perfume_id === w.perfume_id).length;
           return html`<li class="row between"><div><div class="brand">${w.perfume.brand}</div><a class="pname" href="#/perfume/${w.perfume.id}">${w.perfume.name}</a> <span class="muted small">${w.perfume.concentration}</span> ${familyChip(w.perfume)}
-            <div class="small">${n ? html`<a href="#/perfume/${w.perfume.id}">${n} member${n === 1 ? " is" : "s are"} trading this</a>` : html`<span class="muted">No one is trading it yet</span>`}</div></div>
+            <div class="small">${n ? html`<a href="#/perfume/${w.perfume.id}">${n} member${n === 1 ? " is" : "s are"} trading this</a>` : html`<span class="muted">No one is trading it yet</span> · <a href="${buyUrl(w.perfume)}" target="_blank" rel="noopener sponsored">${CFG.BUY_SAMPLE_SHOP ? `Find a sample at ${CFG.BUY_SAMPLE_SHOP}` : "Search for a sample"} ↗</a>`}</div></div>
             <button class="btn small ghost" data-unwish="${w.id}" aria-label="Remove ${pTitle(w.perfume)} from wishlist">Remove</button></li>`;
         })}</ul>` : html`<div class="empty" style="margin-top:16px"><h3>What are you hoping to smell?</h3><p>Search above to add perfumes to your wishlist.</p></div>`}`);
       perfumePicker($("#wishPick"), (p) => run(null, async () => { await api.addWish(p.id); toast(`Added ${p.name} to your wishlist.`); route(); }));
@@ -989,7 +1011,7 @@
           <div class="row"><button class="btn small" id="imgSave">Set catalog photo</button>${p.image_url ? html`<button type="button" class="btn small secondary" id="imgRemove">Remove catalog photo</button>` : ""}</div></form></div>` : ""}
       <div id="prBox"><div class="spinner"></div></div>
       <h2>Open to trade (${items.length})</h2>
-      ${items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { owner: true }))}</div>` : html`<p class="muted">No one is trading this right now.</p>`}
+      ${items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { owner: true }))}</div>` : p.status === "approved" ? buyHint(p) : html`<p class="muted">No one is trading this right now.</p>`}
       <h2>On ${wishes.length} wishlist${wishes.length === 1 ? "" : "s"}</h2>
       <p>${wishes.length ? wishes.map((w, k) => html`${k ? ", " : ""}<a href="#/u/${w.user.id}">${w.user.display_name}</a>`) : html`<span class="muted">No one yet.</span>`}</p>`);
     $("#iHave").addEventListener("click", () => itemForm(null, p));
@@ -1146,7 +1168,7 @@
         ${p.is_banned ? html`<div class="notice rose" style="margin-top:12px">This account has been suspended.</div>` : ""}
         ${p.bio ? html`<p style="margin-top:14px">${p.bio}</p>` : ""}
         ${iBlocked ? html`<div class="notice" style="margin-top:12px">You blocked ${p.display_name}. You don't see each other's listings or wishlists, and neither of you can propose a swap. They aren't told.</div>` : ""}
-        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${!p.is_banned && !iBlocked && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}${state.profile?.is_admin && p.avatar_url ? html`<button class="btn ghost" id="clearAvatar">Remove profile photo <span class="pill gold">Admin</span></button>` : ""}`}</div></div>
+        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${!p.is_banned && !iBlocked && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}${!p.is_banned && !iBlocked ? html`<a class="btn secondary gift-btn" href="#/gift/${id}">${GIFT_ICON}<span>Give a gift</span></a>` : ""}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}${state.profile?.is_admin && p.avatar_url ? html`<button class="btn ghost" id="clearAvatar">Remove profile photo <span class="pill gold">Admin</span></button>` : ""}`}</div></div>
       ${iBlocked ? "" : html`<h2>${isMe ? "Collection" : "Open to trade"}</h2>
       ${shown.length ? html`<div class="grid">${shown.map((i) => html`<div>${itemTile(i)}${isMe ? "" : html`<button class="btn small ghost" data-repitem="${i.id}" style="margin-top:4px">Report listing</button>`}</div>`)}</div>` : html`<p class="muted">Nothing listed for trade right now.</p>`}
       <h2>Wishlist</h2>
@@ -1165,7 +1187,7 @@
     $$("[data-repitem]").forEach((b) => b.addEventListener("click", () => reportDialog({ targetUserId: id, targetItemId: b.dataset.repitem, what: "this listing" })));
   }
 
-  async function pagePropose(otherId) {
+  async function pagePropose(otherId, _params, gift = false) {
     if (otherId === state.uid) return go("/collection");
     const [other, theirs, mine, myW, theirW, address, stats, dist, myLoc] = await Promise.all([
       api.getProfile(otherId), api.listItems({ ownerId: otherId, tradeableOnly: true }), api.listItems({ ownerId: state.uid }),
@@ -1174,6 +1196,7 @@
     const miles = dist[otherId], canMeet = miles != null && miles <= NEAR_MILES;
     if (!other) return setView(html`<div class="empty"><h3>Member not found</h3></div>`);
     if ((await api.listBlocks()).some((b) => b.blocked_id === otherId)) return setView(html`<div class="empty"><h3>You blocked ${other.display_name}</h3><p>Unblock them from their profile to swap again.</p><a class="btn secondary" href="#/u/${otherId}">Their profile</a></div>`);
+    if (gift) return giftPage(other, mine, theirW, canMeet, miles, myLoc);
     const myT = mine.filter((i) => i.tradeable && !i.is_hidden);
     const wantSet = new Set(myW.map((w) => w.perfume_id)), theyWantSet = new Set(theirW.map((w) => w.perfume_id));
     const newbie = !stats[otherId]?.completed_swaps || !stats[state.uid]?.completed_swaps;
@@ -1216,6 +1239,43 @@
     });
   }
 
+  // Give perfume with nothing asked back. Only the giver ships; only the receiver's address is shared.
+  function giftPage(other, mine, theirW, canMeet, miles, myLoc) {
+    const myT = mine.filter((i) => i.tradeable && !i.is_hidden);
+    const theyWantSet = new Set(theirW.map((w) => w.perfume_id));
+    setView(html`<div class="page-head"><div class="eyebrow">${GIFT_ICON} A gift</div><h1>Give a gift to ${other.display_name}</h1><p>Pick what you'd like to give. Nothing is asked in return. ${other.display_name} can accept or decline.</p></div>
+      <form id="pf">
+        <h2>How will you give it?</h2>
+        <div class="method-pick" role="radiogroup" aria-label="How will you give it">
+          <label class="method"><input type="radio" name="method" value="mail" checked><span><b>Ship by mail</b><span class="small muted">If they accept, you'll see their address. They won't see yours.</span></span></label>
+          <label class="method ${canMeet ? "" : "off"}"><input type="radio" name="method" value="meetup" ${canMeet ? "" : raw("disabled")}><span><b>${PIN} Meet in person</b><span class="small muted">${canMeet ? `You're about ${miles} mile${miles === 1 ? "" : "s"} apart. No addresses shared — you agree on a public place.` : !myLoc ? html`Add your ZIP code under <a href="#/me">Me</a> to see if you're within ${NEAR_MILES} miles.` : `Only for members ${NEAR_MILES} miles or less apart.`}</span></span></label>
+        </div>
+        <div id="meetNote" hidden><div class="notice ok" style="margin-top:12px"><b>Meeting safely</b>${SAFETY_TIPS}</div></div>
+        <h2>You'd give</h2>
+        ${myT.length ? html`<div class="grid">${myT.map((i) => itemTile(i, { select: "mine", checked: theyWantSet.has(i.perfume_id) }))}</div>` : html`<div class="empty"><p>You have nothing marked “open to trade”. Mark a perfume as open to trade to give it.</p><a class="btn secondary" href="#/collection">Go to my collection</a></div>`}
+        <div class="swap-summary" id="swapSum" aria-live="polite"></div>
+        <div class="field" style="margin-top:20px"><label for="msg">A note for ${other.display_name} <span class="muted">(optional)</span></label><textarea id="msg" maxlength="600" placeholder="I think you'll love this one, enjoy!"></textarea></div>
+        <div class="field"><button class="btn" id="sendProp" disabled>Offer gift</button></div>
+      </form>`);
+    bindSelectable(view);
+    const method = () => (new FormData($("#pf")).get("method") || "mail");
+    const refresh = () => {
+      const give = new FormData($("#pf")).getAll("mine").length;
+      $("#swapSum").innerHTML = val(html`<span>You give <b>${give}</b> item${give === 1 ? "" : "s"}</span><span aria-hidden="true">${GIFT_ICON}</span><span>Nothing asked in return</span>`);
+      $("#meetNote").hidden = method() !== "meetup";
+      $("#sendProp").disabled = !give;
+    };
+    $$("#pf input").forEach((i) => i.addEventListener("change", refresh));
+    refresh();
+    $("#pf").addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#sendProp"), async () => {
+        const id = await api.offerGift({ recipientId: other.id, myItemIds: new FormData(e.target).getAll("mine"), message: $("#msg").value, method: method() });
+        toast("Gift offered. How lovely!"); go(`/swap/${id}`);
+      });
+    });
+  }
+
   async function pageSwaps() {
     const [swaps, reviewed] = await Promise.all([api.listMySwaps(), myReviewedSet()]);
     const rows = swaps.map((s) => ({ s, info: swapInfo(s, reviewed.has(s.id)) }));
@@ -1224,7 +1284,7 @@
     const past = rows.filter((r) => !r.info.needsMe && !["proposed", "accepted"].includes(r.s.status));
     const row = ({ s, info }) => html`<li><a class="swap-row" href="#/swap/${s.id}">${avatar(info.other)}<div class="grow">
         <div class="title">${info.name}</div>
-        <div class="small muted ellipsis">Get ${info.get.map((x) => x.perfume?.name).join(", ")} · give ${info.give.map((x) => x.perfume?.name).join(", ")}</div></div>
+        <div class="small muted ellipsis">${info.gift ? html`${GIFT_ICON} Gift ${info.iAmP ? "to them" : "for you"}: ${(info.iAmP ? info.give : info.get).map((x) => x.perfume?.name).join(", ")}` : html`Get ${info.get.map((x) => x.perfume?.name).join(", ")} · give ${info.give.map((x) => x.perfume?.name).join(", ")}`}</div></div>
         <span class="pill ${info.tone}">${info.label}</span></a></li>`;
     const section = (title, list) => list.length ? html`<h2>${title}</h2><ul class="list card">${list.map(row)}</ul>` : "";
     setView(html`<div class="page-head"><h1>My swaps</h1><p>Proposals, packages on the way, and swaps waiting for a review.</p></div>
@@ -1245,13 +1305,19 @@
     const closed = ["declined", "cancelled"].includes(s.status);
     const itemsList = (list) => html`<ul class="list">${list.map((x) => html`<li class="row" style="gap:12px;flex-wrap:nowrap"><div style="width:34px;height:48px;flex:none">${bottleSvg(x.perfume, x.size)}</div><div><div class="brand">${x.perfume?.brand}</div><b class="pname" style="font-size:1.05rem">${x.perfume?.name}</b><div class="meta">${SIZE_LABEL[x.size]}${x.volume_ml ? " · " + +x.volume_ml + " ml" : ""}</div></div></li>`)}</ul>`;
 
-    const meet = s.method === "meetup";
+    const meet = s.method === "meetup", gift = info.gift;
     const bothMet = info.my.received && info.their.received;
     let action = "";
-    if (s.status === "proposed" && !info.iAmP) action = html`<div class="row"><button class="btn" id="accept">Accept swap</button><button class="btn secondary" id="decline">Decline</button></div><p class="hint">${meet ? "This is a meet-up: no addresses are shared. Once you accept, you'll agree on a public place and time below." : "When you accept, you'll both see each other's shipping address."}</p>`;
-    else if (s.status === "proposed") action = html`<button class="btn secondary" id="cancel">Withdraw proposal</button>`;
+    if (s.status === "proposed" && !info.iAmP && gift) action = html`<div class="row"><button class="btn" id="accept">Accept gift</button><button class="btn secondary" id="decline">No, thank you</button></div><p class="hint">${meet ? "This is a meet-up: no addresses are shared. Once you accept, you'll agree on a public place and time below." : `When you accept, ${on} sees your shipping address so they can send it. You don't send anything back.`}</p>`;
+    else if (s.status === "proposed" && !info.iAmP) action = html`<div class="row"><button class="btn" id="accept">Accept swap</button><button class="btn secondary" id="decline">Decline</button></div><p class="hint">${meet ? "This is a meet-up: no addresses are shared. Once you accept, you'll agree on a public place and time below." : "When you accept, you'll both see each other's shipping address."}</p>`;
+    else if (s.status === "proposed") action = html`<button class="btn secondary" id="cancel">${gift ? "Withdraw gift" : "Withdraw proposal"}</button>`;
     else if (s.status === "accepted" && meet) {
       action = !info.my.received ? html`<div class="row"><button class="btn" id="met">We met up and swapped</button></div><p class="hint">Tap this after you've met and exchanged. When you've both confirmed, the swap is complete.</p>` : "";
+    }
+    else if (s.status === "accepted" && gift) {
+      action = info.iAmP
+        ? (!info.my.shipped ? html`<div class="row"><button class="btn" id="ship">I've shipped the gift</button></div><p class="hint">Perfume is flammable: ship by ground only, cushion glass well, and seal the atomizer.</p>` : "")
+        : (info.their.shipped && !info.my.received ? html`<div class="row"><button class="btn" id="recv">My gift arrived</button></div>` : "");
     }
     else if (s.status === "accepted") {
       action = html`<div class="row">${!info.my.shipped ? html`<button class="btn" id="ship">I've shipped my package</button>` : ""}
@@ -1259,12 +1325,20 @@
         ${!info.my.shipped ? html`<p class="hint">Perfume is flammable: ship by ground only, cushion glass well, and seal the atomizer.</p>` : ""}`;
     }
     setView(html`<a href="#/swaps" class="btn ghost small">&larr; All swaps</a>
-      <div class="page-head" style="margin-top:8px"><div class="eyebrow">Swap started ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span>${meet ? html`<span class="pill ok near">${PIN}Meeting in person</span>` : html`<span class="pill grey">By mail</span>`}</div></div>
+      <div class="page-head" style="margin-top:8px"><div class="eyebrow">${gift ? "Gift offered" : "Swap started"} ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span>${gift ? html`<span class="pill rose gift-pill">${GIFT_ICON}Gift</span>` : ""}${meet ? html`<span class="pill ok near">${PIN}Meeting in person</span>` : html`<span class="pill grey">By mail</span>`}</div></div>
       <div class="stack">
         ${s.message ? html`<div class="card"><div class="small muted">${info.iAmP ? "Your note" : `${on}'s note`}</div><p style="margin:4px 0 0">“${s.message}”</p></div>` : ""}
-        <div class="card"><div class="match-sides">
-          <div><h3>You receive <span class="pill">${info.get.length}</span></h3>${itemsList(info.get)}</div><div><h3>You give <span class="pill">${info.give.length}</span></h3>${itemsList(info.give)}</div></div></div>
-        ${closed ? html`<div class="notice">${s.status === "declined" ? "This proposal was declined." : "This proposal was withdrawn."}</div>` : meet ? html`
+        ${gift ? html`<div class="card"><h3>${GIFT_ICON} ${info.iAmP ? `Your gift to ${on}` : `Your gift from ${on}`} <span class="pill">${s.items.length}</span></h3>${itemsList(s.items)}<p class="hint">${info.iAmP ? "Nothing is asked in return." : "Nothing to send back. Just enjoy it!"}</p></div>`
+          : html`<div class="card"><div class="match-sides">
+          <div><h3>You receive <span class="pill">${info.get.length}</span></h3>${itemsList(info.get)}</div><div><h3>You give <span class="pill">${info.give.length}</span></h3>${itemsList(info.give)}</div></div></div>`}
+        ${closed ? html`<div class="notice">${s.status === "declined" ? (gift ? "This gift was declined." : "This proposal was declined.") : (gift ? "This gift was withdrawn." : "This proposal was withdrawn.")}</div>` : gift && !meet ? html`
+        <div class="card"><h3>Progress</h3><ol class="steps">
+          ${st(true, false, "Gift offered", `${info.iAmP ? "You" : on} offered this gift`)}
+          ${st(accepted, s.status === "proposed", "Accepted", accepted ? (info.iAmP ? `You can now see ${on}'s address` : `${on} can now see your address`) : `Waiting for ${info.iAmP ? on : "you"}`)}
+          ${st(!!s.proposer_shipped_at, accepted && !s.proposer_shipped_at, "Shipped", s.proposer_shipped_at ? fmtDate(s.proposer_shipped_at) : "")}
+          ${st(!!s.recipient_received_at, !!s.proposer_shipped_at && !s.recipient_received_at, "Arrived", s.recipient_received_at ? fmtDate(s.recipient_received_at) : "")}
+          ${st(!!(myReview && theirReview), s.status === "completed", "Reviewed", s.status === "completed" ? `You: ${myReview ? "done" : "not yet"} · ${on}: ${theirReview ? "done" : "not yet"}` : "")}
+        </ol>${action}</div>` : meet ? html`
         <div class="card"><h3>Progress</h3><ol class="steps">
           ${st(true, false, "Proposed", `${info.iAmP ? "You" : on} proposed meeting in person`)}
           ${st(accepted, s.status === "proposed", "Accepted", accepted ? "Agree on a public place and time below" : `Waiting for ${info.iAmP ? on : "you"}`)}
@@ -1283,7 +1357,7 @@
           ${st(bothReceived, bothShipped && !bothReceived, "Both packages arrived", accepted ? `You: ${info.my.received ? "received" : "not yet"} · ${on}: ${info.their.received ? "received" : "not yet"}` : "")}
           ${st(!!(myReview && theirReview), s.status === "completed", "Reviewed", s.status === "completed" ? `You: ${myReview ? "done" : "not yet"} · ${on}: ${theirReview ? "done" : "not yet"}` : "")}
         </ol>${action}</div>`}
-        ${accepted && o && !meet ? html`<div class="card"><h3>Ship to</h3>${addr ? html`<div class="address">${addr.full_name}\n${addr.address}</div>` : html`<p class="muted">${on} hasn't added an address yet.</p>`}<p class="hint">Only the two of you can see each other's address, and only for accepted swaps.</p></div>` : ""}
+        ${accepted && o && !meet && (!gift || info.iAmP) ? html`<div class="card"><h3>Ship to</h3>${addr ? html`<div class="address">${addr.full_name}\n${addr.address}</div>` : html`<p class="muted">${on} hasn't added an address yet.</p>`}<p class="hint">Only the two of you can see each other's address, and only for accepted swaps.</p></div>` : ""}
         ${s.status === "completed" ? html`<div class="card"><h3>${myReview ? "Your review" : o ? `How was swapping with ${on}?` : "Review"}</h3>
           ${myReview ? html`<p><span class="stars">${starsText(myReview.rating)}</span> ${myReview.comment}</p>` : !o ? html`<p class="muted">${on} has left Swapfume, so this swap can't be reviewed.</p>` : html`<form id="revForm">
             <div class="star-input" role="radiogroup" aria-label="Rating">${[5, 4, 3, 2, 1].map((n) => html`<input type="radio" name="rating" id="r${n}" value="${n}" ${n === 5 ? raw("required") : ""}><label for="r${n}" title="${n} star${n > 1 ? "s" : ""}" aria-label="${n} star${n > 1 ? "s" : ""}">★</label>`)}</div>
@@ -1294,11 +1368,11 @@
         <div><button class="btn ghost small" id="repSwap">Report a problem with this swap</button></div>
       </div>`);
     const bind = (sel, fn) => { const b = $(sel); if (b) b.addEventListener("click", () => run(b, fn)); };
-    bind("#accept", async () => { await api.respondSwap(s.id, true); toast(meet ? "Accepted! Now agree where and when to meet." : "Accepted! You can now see their address."); route(); refreshSwapDot(); });
+    bind("#accept", async () => { await api.respondSwap(s.id, true); toast(meet ? "Accepted! Now agree where and when to meet." : gift ? `Accepted! ${on} can now ship it to you.` : "Accepted! You can now see their address."); route(); refreshSwapDot(); });
     bind("#met", async () => { if (await confirmBox("Did you meet up and swap?", "Confirm only after you've exchanged the perfumes. When you've both confirmed, the swap is complete and you can review each other.", "Yes, we swapped")) { await api.markMet(s.id); toast("Lovely — enjoy your new scents!"); route(); refreshSwapDot(); } });
     const pf = $("#planForm");
     if (pf) pf.addEventListener("submit", (e) => { e.preventDefault(); run($("#planSave"), async () => { await api.setMeetPlan(s.id, $("#planIn").value); toast("Meeting plan saved."); route(); }); });
-    bind("#decline", async () => { if (await confirmBox("Decline this swap?", `${on} will see that you declined.`, "Decline")) { await api.respondSwap(s.id, false); route(); refreshSwapDot(); } });
+    bind("#decline", async () => { if (await confirmBox(gift ? "Decline this gift?" : "Decline this swap?", `${on} will see that you declined.`, "Decline")) { await api.respondSwap(s.id, false); route(); refreshSwapDot(); } });
     bind("#cancel", async () => { if (await confirmBox("Withdraw your proposal?", "You can always propose again later.", "Withdraw")) { await api.cancelSwap(s.id); route(); } });
     bind("#ship", async () => { await api.markShipped(s.id); toast("Marked as shipped."); route(); refreshSwapDot(); });
     bind("#recv", async () => { await api.markReceived(s.id); toast("Lovely — enjoy!"); route(); refreshSwapDot(); });
@@ -1508,6 +1582,7 @@
     [/^\/request$/, pageRequest, "collection"],
     [/^\/u\/([\w-]+)$/, pageUser, ""],
     [/^\/propose\/([\w-]+)$/, pagePropose, "home"],
+    [/^\/gift\/([\w-]+)$/, (id) => pagePropose(id, null, true), "home"],
     [/^\/swaps$/, pageSwaps, "swaps"],
     [/^\/swap\/(\d+)$/, pageSwap, "swaps"],
     [/^\/me$/, pageMe, "me"],
