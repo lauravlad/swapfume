@@ -62,7 +62,8 @@
     modal.showModal();
     $$("[data-close]", modal).forEach((b) => b.addEventListener("click", () => modal.close()));
     if (bind) bind(modal);
-    const first = $("input, textarea, select", modal); if (first) first.focus();
+    // Focus the first field, unless the dialog's own setup already chose where to start.
+    const first = $("input, textarea, select", modal); if (first && !modal.contains(document.activeElement)) first.focus();
   }
   function confirmBox(title, text, okLabel = "Yes") {
     return new Promise((resolve) => {
@@ -927,6 +928,8 @@
         });
       };
       fillText(); draw();
+      // Start on the chosen network tab rather than the first style chip.
+      const curTab = $(`[data-net="${net}"]`, m); if (curTab) curTab.focus({ focusVisible: false });
       $$("[data-net]", m).forEach((b) => b.addEventListener("click", () => {
         if (b.dataset.net === net) return;
         if (edited && !confirm("Switching will replace your edited text with a new one for " + NETWORKS[b.dataset.net].label + ". Continue?")) return;

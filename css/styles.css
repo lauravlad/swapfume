@@ -504,3 +504,6 @@ body.signed-out main { padding-top: calc(20px + env(safe-area-inset-top)); }
 /* ---- "Buy a sample" pointer ---- */
 .buy-hint { display: flex; gap: 12px; align-items: flex-start; }
 .buy-hint .grow { flex: 1; }
+
+/* iPhone app: keep pop-up windows clear of the notch (centred, so equal space top and bottom). */
+dialog { max-height: calc(100dvh - 2 * max(16px, calc(env(safe-area-inset-top) + 10px))); overflow: auto; }
