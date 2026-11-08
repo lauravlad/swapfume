@@ -467,3 +467,9 @@ dialog::backdrop { background: rgba(38, 28, 26, .45); backdrop-filter: blur(3px)
 .zip-preview { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 .zip-preview p { flex: 1; min-width: 180px; margin: 0; }
 @media (max-width: 520px) { .profile-top .area-map, .profile-top .area-tiles { width: 100%; } .profile-top .area-tiles { height: 180px; } }
+
+/* ---- iPhone app / notch: keep content clear of the status bar (env() is 0 in normal browsers) ---- */
+.topbar { padding-top: calc(10px + env(safe-area-inset-top)); }
+body.signed-out main, body.signed-out .site-footer { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+body.signed-out main { padding-top: calc(20px + env(safe-area-inset-top)); }
+.demo-banner { position: relative; z-index: 19; }

@@ -13,18 +13,25 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
+  // Start-up progress, printed only inside the iPhone app (visible in Xcode's console).
+  const bootLog = (msg) => { if (window.Capacitor?.isNativePlatform?.()) console.log("[swapfume] " + msg); };
+  bootLog("app.js started");
+
   // ---------- Choose the data layer ----------
   let api;
   // "?demo=1" in the address runs the demo (pretend members, data only in this browser),
   // even on the live site — handy for testing changes and showing the app.
   const forceDemo = new URLSearchParams(location.search).has("demo");
   if (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && !forceDemo) {
-    await new Promise((res, rej) => {
+    // supabase-js ships with the site (js/vendor) so the app starts without waiting on another server;
+    // the CDN copy is only a fallback.
+    const loadScript = (src) => new Promise((res, rej) => {
       const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js";
-      s.onload = res; s.onerror = () => rej(new Error("Could not load Supabase"));
+      s.src = src; s.onload = res; s.onerror = () => rej(new Error("Could not load Supabase"));
       document.head.appendChild(s);
     });
+    await loadScript("js/vendor/supabase-2.45.4.js")
+      .catch(() => loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"));
     api = window.makeSupabaseApi(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
   } else {
     api = window.DemoApi;
@@ -1251,7 +1258,9 @@
   }
 
   window.addEventListener("hashchange", route);
+  bootLog("data layer ready, checking sign-in");
   await api.init();
+  bootLog("sign-in checked");
   // Coming back from an email link: open the right page and tidy the address bar.
   const setHash = (h) => history.replaceState(null, "", location.pathname + location.search + h);
   if (/type=recovery/.test(bootHash) || api.isRecovering?.()) setHash("#/reset-password");
