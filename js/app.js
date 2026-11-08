@@ -397,6 +397,23 @@
       ${doc.updated ? html`<p class="small muted">Last updated ${doc.updated}</p>` : ""}${raw(doc.body)}</article>`);
   }
 
+  // A new sign-up confirmation email, for when the first one expired, was used already, or never arrived.
+  function pageResendConfirm(params) {
+    setView(html`${backLink()}<form class="card narrow" id="rcForm" style="margin-top:10px"><h1>Confirm your email</h1>
+      <p class="muted">Enter the email you signed up with and we'll send you a fresh confirmation link. Open it on this device, and only once.</p>
+      <div class="field"><label for="rcEm">Email</label><input id="rcEm" type="email" required autocomplete="email" value="${params?.get("email") || ""}"></div>
+      <div class="field"><button class="btn block" id="rcBtn">Send a new confirmation email</button></div><div id="rcOut"></div></form>`);
+    $("#rcForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#rcBtn"), async () => {
+        await api.resendConfirmation($("#rcEm").value);
+        $("#rcOut").innerHTML = val(api.mode === "demo"
+          ? html`<div class="notice"><b>Demo mode:</b> no email is sent, and demo accounts don't need confirming.</div>`
+          : html`<div class="notice">If that email is waiting to be confirmed, a new link is on its way. Check your inbox (and spam). It can take a minute to arrive.</div>`);
+      });
+    });
+  }
+
   function pageForgot() {
     setView(html`${backLink()}<form class="card narrow" id="fpForm" style="margin-top:10px"><h1>Forgot your password?</h1>
       <p class="muted">Enter the email you signed up with. We'll send you a link to choose a new password.</p>
@@ -487,7 +504,7 @@
           <div class="field"><label for="pw">Password</label><input id="pw" type="password" required minlength="8" autocomplete="current-password"><p class="hint" id="pwHint" hidden>At least 8 characters.</p></div>
           <div class="field" id="dobField" hidden><label for="dob">Date of birth</label><input id="dob" type="date" min="1900-01-01" max="${new Date().toISOString().slice(0, 10)}" autocomplete="bday"><p class="hint">Swapfume is for people ${CFG.MIN_AGE} and older. We keep only a yes/no — never your birthday.</p></div>
           <div class="field"><button class="btn block" id="authBtn">Sign in</button></div>
-          <p class="small" id="forgotRow" style="margin:0"><a href="#/forgot">Forgot password?</a></p>
+          <p class="small" id="forgotRow" style="margin:0"><a href="#/forgot">Forgot password?</a> · <a href="#/confirm-email">Resend confirmation email</a></p>
           <p class="small muted" id="agreeRow" hidden style="margin:0">By creating an account you agree to the <a href="#/terms">Terms of Use</a> and <a href="#/privacy">Privacy Policy</a>, and confirm you are ${CFG.MIN_AGE} or older.</p>
         </form>
         ${demo ? html`<hr class="soft"><div class="notice"><b>Demo mode.</b> Nothing leaves this browser. Create any account (e.g. you@test.com), or step in as a pretend member:</div>
@@ -1597,6 +1614,7 @@
     [/^\/terms$/, () => pageLegal("terms")],
     [/^\/support$/, () => pageLegal("support")],
     [/^\/forgot$/, pageForgot],
+    [/^\/confirm-email$/, () => pageResendConfirm(new URLSearchParams((location.hash.split("?")[1]) || ""))],
     [/^\/reset-password$/, pageResetPassword]
   ];
   let routeToken = 0;
@@ -1654,7 +1672,9 @@
   if (/type=recovery/.test(bootHash) || api.isRecovering?.()) setHash("#/reset-password");
   else if (/error_description=/.test(bootHash)) {
     const why = new URLSearchParams(bootHash.slice(1)).get("error_description") || "That link didn't work.";
-    setHash("#/"); setTimeout(() => toast(/expired|invalid/i.test(why) ? "That email link has expired. Please ask for a new one." : why, "error"), 400);
+    // An expired or already-used sign-up link: go straight to "send a new confirmation email".
+    if (/expired|invalid/i.test(why) && !/type=recovery/.test(bootHash)) { setHash("#/confirm-email"); setTimeout(() => toast("That link has expired or was already used. Send yourself a new one below.", "error"), 400); }
+    else { setHash("#/"); setTimeout(() => toast(/expired|invalid/i.test(why) ? "That email link has expired. Please ask for a new one." : why, "error"), 400); }
   } else if (/access_token=/.test(bootHash)) setHash("#/");
   api.onAuthChange(onAuth);
   onAuth();

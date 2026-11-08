@@ -64,9 +64,17 @@
       },
       async signIn({ email, password }) {
         const { error } = await sb.auth.signInWithPassword({ email: String(email).trim(), password });
-        if (error) fail(/confirm/i.test(error.message) ? "Please confirm your email first (check your inbox)." : "Email or password is not right.");
+        if (error) fail(/confirm/i.test(error.message) ? "Please confirm your email first (check your inbox). Link expired? Tap \"Resend confirmation email\" below." : "Email or password is not right.");
       },
       async signOut() { await sb.auth.signOut(); },
+      // A fresh sign-up confirmation link (the first one expired, was used, or never arrived).
+      async resendConfirmation(email) {
+        email = String(email || "").trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail("Please enter a valid email address.");
+        const { error } = await sb.auth.resend({ type: "signup", email, options: { emailRedirectTo: siteUrl() } });
+        if (error && /rate|seconds|too many/i.test(error.message)) fail("Please wait a minute before asking for another email.");
+        if (error) fail(error.message);
+      },
       // Password reset: Supabase emails a link back to this page; the app then opens #/reset-password.
       async requestPasswordReset(email) {
         email = String(email || "").trim();

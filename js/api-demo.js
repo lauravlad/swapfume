@@ -249,6 +249,10 @@
     },
     async signOut() { setUid(null); },
     // Password reset. Demo: no email is sent; the app opens the reset page directly.
+    async resendConfirmation(email) {
+      await tick();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email || "").trim())) fail("Please enter a valid email address.");
+    },
     async requestPasswordReset(email) {
       await tick();
       email = String(email || "").trim().toLowerCase();
