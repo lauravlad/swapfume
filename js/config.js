@@ -18,6 +18,9 @@ window.APP_CONFIG = {
   // The public website. Only used by the iPhone app, so email links (confirm sign-up,
   // reset password) open the real site instead of the app's internal address.
   PUBLIC_SITE_URL: "https://swapfume.com/",
+  // The iPhone app's App Store page. The website shows a "Download on the App Store" badge linking here
+  // (hidden inside the app itself). Empty = no badge.
+  APP_STORE_URL: "https://apps.apple.com/us/app/swapfume/id6832157343",
   // "Buy a sample" link, shown when nobody is swapping a perfume. Members never pay each other on Swapfume.
   // Empty = a plain web search. To send people to one shop, set its name and a search address with {q}
   // where the perfume name goes, e.g. BUY_SAMPLE_URL: "https://shop.example/search?q={q}".

@@ -479,6 +479,13 @@
     }));
   }
 
+  // "Download on the App Store" badge (Apple's official artwork). Not shown inside the iPhone app itself.
+  const isNativeApp = () => !!window.Capacitor?.isNativePlatform?.();
+  function appStoreBadge(cls = "") {
+    if (!CFG.APP_STORE_URL || isNativeApp()) return "";
+    return html`<a class="app-badge ${cls}" href="${CFG.APP_STORE_URL}" target="_blank" rel="noopener"><img src="icons/app-store-badge.svg" alt="Download on the App Store" width="150" height="50"></a>`;
+  }
+
   async function pageWelcome() {
     document.body.classList.add("signed-out");
     const demo = api.mode === "demo";
@@ -495,6 +502,7 @@
           <li>Reviews and a completed-swap count help you trade with confidence.</li>
         </ul>
         <p class="small muted" style="margin-top:14px">Currently for members in the ${CFG.LAUNCH_COUNTRY} only — perfume can't easily cross borders by mail.</p>
+        ${appStoreBadge("hero-badge")}
       </div>
       <div class="card">
         <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-tab="in">Sign in</button><button role="tab" aria-selected="false" data-tab="up">Create account</button></div>
@@ -1734,6 +1742,10 @@
 
   window.addEventListener("hashchange", route);
   bootLog("data layer ready, checking sign-in");
+  // App Store badge in the footer (website only).
+  const footBadge = appStoreBadge("foot-badge");
+  if (footBadge) document.querySelector(".site-footer")?.insertAdjacentHTML("afterbegin", footBadge.toString());
+
   await api.init();
   bootLog("sign-in checked");
   // Coming back from an email link: open the right page and tidy the address bar.
