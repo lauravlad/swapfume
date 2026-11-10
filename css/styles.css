@@ -553,3 +553,6 @@ fieldset.field legend { font-weight: 600; margin-bottom: 4px; }
 .meetup-page .facts li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .meetup-desc { white-space: pre-line; margin-top: 14px; }
 .attendee { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; font-size: .9rem; }
+
+#askCountry { margin-top: 4px; }
+#askCountry .ico-inline, .ask-country h3 .ico-inline { width: 18px; height: 18px; vertical-align: -3px; }

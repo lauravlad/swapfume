@@ -539,16 +539,9 @@
           <li>Addresses stay private until both of you accept the swap.</li>
           <li>Reviews and a completed-swap count help you trade with confidence.</li>
         </ul>
-        <p class="small muted" style="margin-top:14px">Open in ${Util.openCountriesText()}. Members swap within their own country — perfume can't easily cross borders by mail.
-          <button type="button" class="linklike" id="askCountry">Not in your country yet?</button></p>
-        <form class="card ask-country" id="askForm" hidden>
-          <h3>Bring Swapfume to my country</h3>
-          <p class="small muted">Leave your email and country. We'll write once when Swapfume opens there — nothing else.</p>
-          <div class="two field"><div><label for="acCountry">Country</label><input id="acCountry" type="text" required minlength="2" maxlength="60" autocomplete="country-name"></div>
-            <div><label for="acEmail">Email</label><input id="acEmail" type="email" required maxlength="200" autocomplete="email"></div></div>
-          <p class="small muted" style="margin-top:0">See our <a href="#/privacy">Privacy Policy</a>.</p>
-          <button class="btn" id="acSend">Ask for my country</button>
-        </form>
+        <p class="small muted" style="margin-top:14px">Open in ${Util.openCountriesText()}. Members swap within their own country — perfume can't easily cross borders by mail.</p>
+        <button type="button" class="btn secondary small" id="askCountry">${GLOBE} Add my country</button>
+        <div id="askHost" hidden>${countryRequestForm()}</div>
         ${appStoreBadge("hero-badge")}
       </div>
       <div class="card">
@@ -593,14 +586,36 @@
       });
     });
     $$("[data-as]").forEach((b) => b.addEventListener("click", () => api.demoSwitchUser(b.dataset.as)));
-    $("#askCountry").addEventListener("click", () => { $("#askForm").hidden = false; $("#acCountry").focus(); });
-    $("#askForm").addEventListener("submit", (e) => {
+    $("#askCountry").addEventListener("click", () => { $("#askHost").hidden = false; $("#askCountry").hidden = true; $("#acCountry").focus(); });
+    bindCountryRequestForm();
+  }
+
+  // "Add my country": anyone outside the open countries joins a waitlist (migration 016).
+  const GLOBE = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 12h17M12 3.5c2.6 2.4 2.6 14.6 0 17M12 3.5c-2.6 2.4-2.6 14.6 0 17" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`);
+  function countryRequestForm() {
+    return html`<form class="card ask-country" id="askForm">
+      <h3>${GLOBE} Add my country</h3>
+      <p class="small muted">Swapfume is open in ${Util.openCountriesText()}. Tell us where you are — the countries with the most requests open next. We'll email you once when Swapfume opens there, nothing else.</p>
+      <div class="two field"><div><label for="acCountry">Your country</label><input id="acCountry" type="text" required minlength="2" maxlength="60" autocomplete="country-name" placeholder="e.g. United Kingdom"></div>
+        <div><label for="acEmail">Email</label><input id="acEmail" type="email" required maxlength="200" autocomplete="email" value="${state.uid ? "" : ""}"></div></div>
+      <p class="small muted" style="margin-top:0">See our <a href="#/privacy">Privacy Policy</a>.</p>
+      <button class="btn" id="acSend">Add my country</button>
+    </form>`;
+  }
+  function bindCountryRequestForm() {
+    const f = $("#askForm"); if (!f) return;
+    f.addEventListener("submit", (e) => {
       e.preventDefault();
+      const name = $("#acCountry").value.trim();
       run($("#acSend"), async () => {
-        await api.requestCountry($("#acEmail").value, $("#acCountry").value);
-        $("#askForm").innerHTML = val(html`<h3>Thank you! 💐</h3><p class="small muted" style="margin:0">We'll let you know when Swapfume opens in ${$("#acCountry").value}.</p>`);
+        await api.requestCountry($("#acEmail").value, name);
+        f.innerHTML = val(html`<h3>Thank you! 💐</h3><p class="small muted" style="margin:0">We'll let you know when Swapfume opens in ${name}. Tell your perfume friends there to add it too!</p>`);
       });
     });
+  }
+  function pageAddCountry() {
+    setView(html`<div class="narrow" style="max-width:640px;margin:0 auto">${countryRequestForm()}<p><a href="#/">← Back to Swapfume</a></p></div>`);
+    bindCountryRequestForm();
   }
 
   async function pageHome() {
@@ -1915,6 +1930,7 @@
     [/^\/privacy$/, () => pageLegal("privacy")],
     [/^\/terms$/, () => pageLegal("terms")],
     [/^\/support$/, () => pageLegal("support")],
+    [/^\/add-country$/, pageAddCountry],
     [/^\/forgot$/, pageForgot],
     [/^\/confirm-email$/, () => pageResendConfirm(new URLSearchParams((location.hash.split("?")[1]) || ""))],
     [/^\/reset-password$/, pageResetPassword]
