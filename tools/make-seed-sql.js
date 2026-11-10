@@ -169,6 +169,8 @@ parts.push(['area_map', head('012 general-area map on profiles', 'Same as supaba
 parts.push(['gifts', head('013 gifts: give perfume with nothing asked back', 'Same as supabase/migrations/013_gifts.sql.') + mig('013_gifts.sql')]);
 parts.push(['forget_birthdate', head('014 do not keep dates of birth', 'Same as supabase/migrations/014_forget_birthdate.sql.') + mig('014_forget_birthdate.sql')]);
 parts.push(['duplicates', head('015 catch duplicate perfumes; admins can merge them', 'Same as supabase/migrations/015_duplicates.sql.') + mig('015_duplicates.sql')]);
+parts.push(['countries', head('016 Canada and Romania; same-country swaps; country waitlist', 'Same as supabase/migrations/016_countries.sql.') + mig('016_countries.sql')]);
+parts.push(['quantity_events', head('017 how many you have; community meetups', 'Same as supabase/migrations/017_quantity_events.sql.') + mig('017_quantity_events.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);

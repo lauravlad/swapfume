@@ -23,7 +23,7 @@ Trade perfume samples, decants and bottles with fellow fragrance lovers. Find pe
 
 ### Description
 ```
-Swapfume is a small, friendly community for swapping perfume. Trade samples, decants and full bottles with fellow fragrance lovers in the United States. No money, ever: just generosity and good packing.
+Swapfume is a small, friendly community for swapping perfume. Trade samples, decants and full bottles, and meet at community meetups, with fellow fragrance lovers in the United States, Canada and Romania (members swap within their own country). No money, ever: just generosity and good packing.
 
 HOW IT WORKS
 • List what you own and mark what you'd trade.
@@ -47,7 +47,7 @@ Feeling generous? Give a perfume to another member with nothing asked in return.
 
 PRIVATE AND SAFE
 • Your address is shared only with your swap partner, and only after you both accept.
-• Your ZIP code is never shown. Members see only a rounded distance and a blurred map of your general area.
+• Your postal code is never shown. Members see only a rounded distance and a blurred map of your general area.
 • Reviews and completed-swap counts help you swap with confidence.
 • Report or block anyone, any time.
 • For adults 18 and over.
@@ -114,7 +114,7 @@ For every item below, answer:
 | Contact Info → **Email Address** | Sign in, account emails |
 | Contact Info → **Name** | Display name, and the name on the package |
 | Contact Info → **Physical Address** | Shipping address, shown only to a swap partner |
-| Location → **Coarse Location** | ZIP code, for rounded distances and nearby swaps |
+| Location → **Coarse Location** | Postal code, for rounded distances and nearby swaps |
 | User Content → **Photos or Videos** | Profile and bottle photos |
 | User Content → **Other User Content** | Reviews, swap notes, listings, wishlist |
 | User Content → **Customer Support** | Messages to hello@swapfume.com |
@@ -137,7 +137,7 @@ For every item below, answer:
 - **Contact:** your name, phone and lauravlad@gmail.com
 - **Notes for the reviewer:**
 ```
-Swapfume is a perfume-swapping community for adults in the United States. Members list perfumes they own, add a wishlist, and Swapfume matches people who have what each other wants. Swaps are perfume-for-perfume: the app never handles money, payments or sales.
+Swapfume is a perfume-swapping community for adults in the United States, Canada and Romania. Members list perfumes they own, add a wishlist, and Swapfume matches people who have what each other wants. Swaps are perfume-for-perfume: the app never handles money, payments or sales.
 
 Test account: sign in with the details above. It already has a shipping address, a ZIP code and perfumes open to trade.
 
@@ -147,7 +147,7 @@ Things to try:
 • Any perfume page: notes, member reviews, "I have this / I want this".
 • A member's profile: "Propose a swap" or "Give a gift".
 
-Safety: addresses are shown only to a swap partner after both accept. ZIP codes are never shown. Members can report and block each other, and admins can hide content and ban accounts. Accounts can be deleted in the app under Me → Delete account.
+Safety: addresses are shown only to a swap partner after both accept. Postal codes are never shown. Members can report and block each other, and admins can hide content and ban accounts. Accounts can be deleted in the app under Me → Delete account.
 ```
 
 ---
@@ -155,7 +155,7 @@ Safety: addresses are shown only to a swap partner after both accept. ZIP codes 
 ## 5. Pricing and availability
 
 - **Price:** Free
-- **Availability:** United States only (Swapfume is US-only for now)
+- **Availability:** United States, Canada and Romania (from build 3). Turn on Canada and Romania in App Store Connect → Pricing and Availability.
 
 ---
 

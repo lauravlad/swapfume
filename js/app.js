@@ -142,30 +142,42 @@
   const perfumerLinks = (p) => (p?.perfumers || []).map((n, k) => html`${k ? (k === p.perfumers.length - 1 ? " & " : ", ") : ""}<a href="#/catalog?perfumer=${encodeURIComponent(n)}">${n}</a>`);
   const starsText = (n) => "★★★★★".slice(0, n) + "☆☆☆☆☆".slice(0, 5 - n);
   const place = (p) => [p?.city, p?.country].filter(Boolean).join(", ");
-  const amount = (i) => [i.volume_ml ? `${+i.volume_ml} ml` : "", i.size !== "sample" && i.fill_pct < 100 ? `about ${i.fill_pct}% left` : ""].filter(Boolean).join(" · ");
+  const amount = (i) => [i.volume_ml ? `${+i.volume_ml} ml` : "", i.fill_pct < 100 ? `about ${i.fill_pct}% left` : ""].filter(Boolean).join(" · ");
   const pTitle = (p) => p ? `${p.brand} ${p.name}` : "Unknown perfume";
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+
+  // "7 samples · 2 decants · 1 full bottle" available to swap (counts every vial, not just listings).
+  function availableText(items) {
+    const n = { sample: 0, decant: 0, full: 0 };
+    items.filter((i) => i.tradeable && !i.is_hidden).forEach((i) => { n[i.size] += i.quantity ?? 1; });
+    const parts = [[n.sample, "sample", "samples"], [n.decant, "decant", "decants"], [n.full, "full bottle", "full bottles"]]
+      .filter(([k]) => k).map(([k, one, many]) => `${k} ${k === 1 ? one : many}`);
+    return parts.length ? parts.join(" · ") : "";
+  }
 
   function itemTile(i, { owner = false, mine = false, select = null, checked = false } = {}) {
     const p = i.perfume;
     const art = i.photo_url ? html`<img src="${i.photo_url}" alt="Photo of ${pTitle(p)}" loading="lazy">` : bottleSvg(p, i.size);
     const inner = html`
       <div class="art" style="--tint:${tint(p)}">${art}</div>
-      <div class="corner"><span class="pill ${i.size === "full" ? "rose" : i.size === "decant" ? "gold" : ""}">${SIZE_LABEL[i.size]}</span></div>
+      <div class="corner"><span class="pill ${i.size === "full" ? "rose" : i.size === "decant" ? "gold" : ""}">${SIZE_LABEL[i.size]}</span>${(i.quantity ?? 1) > 1 ? html`<span class="pill qty" title="${i.quantity} available">×${i.quantity}</span>` : ""}</div>
       <div class="body">
         <span class="brand">${p?.brand}</span>
         ${select ? html`<span class="pname">${p?.name}</span>` : html`<a class="pname" href="#/perfume/${p?.id}">${p?.name}</a>`}
         <span class="meta">${p?.concentration}${amount(i) ? " · " + amount(i) : ""}</span>
         ${p?.family || p?.is_classic ? html`<div class="row" style="gap:6px;margin-top:2px">${familyChip(p)}${classicChip(p)}</div>` : ""}
         ${notesOf(p).length ? html`<span class="notes-line">${shortNotes(p)}</span>` : ""}
-        ${i.size !== "sample" && i.fill_pct != null ? html`<div class="fill" aria-hidden="true"><span style="width:${i.fill_pct}%"></span></div>` : ""}
+        ${i.fill_pct != null ? html`<div class="fill" aria-hidden="true"><span style="width:${i.fill_pct}%"></span></div>` : ""}
         ${i.note ? html`<span class="meta">“${i.note}”</span>` : ""}
-        ${mine ? html`<div class="row" style="margin-top:4px">${i.tradeable ? html`<span class="pill ok">Open to trade</span>` : html`<span class="pill grey">Keeping</span>`}${i.is_hidden ? html`<span class="pill warn">Hidden by admin</span>` : ""}</div>
+        ${mine ? html`<div class="row" style="margin-top:4px">${i.quantity === 0 ? html`<span class="pill grey">None left</span>` : i.tradeable ? html`<span class="pill ok">Open to trade</span>` : html`<span class="pill grey">Keeping</span>`}${i.is_hidden ? html`<span class="pill warn">Hidden by admin</span>` : ""}</div>
           <div class="actions"><button class="btn small secondary" data-edit="${i.id}">Edit</button><button class="btn small ghost" data-toggle="${i.id}">${i.tradeable ? "Keep instead" : "Offer to trade"}</button></div>
           ${p?.status === "approved" ? html`<a class="review-link small" href="#/perfume/${p.id}?review=1"><span aria-hidden="true">★</span> Write a review</a>` : ""}` : ""}
         ${owner && i.owner ? html`<div class="owner">from <a href="#/u/${i.owner.id}">${i.owner.display_name}</a>${place(i.owner) ? html` <span class="muted">· ${i.owner.city || i.owner.country}</span>` : ""}</div>` : ""}
       </div>`;
-    if (select) return html`<label class="tile selectable ${checked ? "on" : ""}"><input type="checkbox" name="${select}" value="${i.id}" ${checked ? raw("checked") : ""}><span class="check" aria-hidden="true"></span>${inner}</label>`;
+    // Several of one listing ("4 vials"): pick how many to include.
+    const howMany = select && (i.quantity ?? 1) > 1
+      ? html`<div class="qty-pick"><label class="small" for="q${i.id}">How many?</label><select id="q${i.id}" name="qty-${i.id}">${Array.from({ length: Math.min(i.quantity, 20) }, (_, k) => html`<option value="${k + 1}">${k + 1}</option>`)}</select></div>` : "";
+    if (select) return html`<div class="tile-wrap"><label class="tile selectable ${checked ? "on" : ""}"><input type="checkbox" name="${select}" value="${i.id}" ${checked ? raw("checked") : ""}><span class="check" aria-hidden="true"></span>${inner}</label>${howMany}</div>`;
     return html`<article class="tile">${inner}</article>`;
   }
   function bindSelectable(root) {
@@ -245,13 +257,17 @@
   // ---------- Item form (add / edit) ----------
   function itemForm(existing, presetPerfume) {
     let chosen = existing?.perfume || presetPerfume || null;
-    const it = existing || { size: "decant", volume_ml: "", fill_pct: 100, tradeable: true, note: "" };
+    // Samples and decants usually get used a few times, so a new one starts half full; a full bottle starts at 100%.
+    const defaultFill = (size) => (size === "full" ? 100 : 50);
+    const it = existing || { size: "decant", volume_ml: "", fill_pct: defaultFill("decant"), tradeable: true, note: "" };
     openModal(html`<form class="dlg" id="itemForm">
       <h3>${existing ? "Edit this listing" : "Add to your collection"}</h3>
       <div class="field"><label>Perfume</label><div id="pickHost"></div></div>
       <div class="field"><label id="szl">Size</label>
         <div class="seg" role="radiogroup" aria-labelledby="szl">${["sample", "decant", "full"].map((s) => html`<label><input type="radio" name="size" value="${s}" ${it.size === s ? raw("checked") : ""}>${SIZE_LABEL[s]}</label>`)}</div>
         <p class="hint">Sample: a tiny vial (1–2 ml). Decant: perfume moved into a small spray (5–30 ml). Full bottle: the original bottle.</p></div>
+      <div class="field"><label for="qty">How many do you have?</label><input id="qty" name="quantity" type="number" min="0" max="99" step="1" inputmode="numeric" value="${it.quantity ?? 1}" style="max-width:120px">
+        <p class="hint">For example 3 vials of the same sample. It goes down by itself when you share some in a swap or gift.</p></div>
       <div class="two field">
         <div><label for="vol">Volume (ml)</label><input id="vol" name="volume_ml" type="number" min="0.5" max="1000" step="0.5" inputmode="decimal" value="${it.volume_ml ?? ""}" placeholder="e.g. 10"></div>
         <div><label for="fill">Amount left: <span id="fillOut">${it.fill_pct}</span>%</label><input id="fill" name="fill_pct" type="range" min="5" max="100" step="5" value="${it.fill_pct}" style="width:100%;accent-color:var(--accent);min-height:46px"></div>
@@ -272,12 +288,19 @@
       };
       drawPick();
       bindPhotoPicker(m);
-      $("#fill", m).addEventListener("input", (e) => ($("#fillOut", m).textContent = e.target.value));
+      let fillTouched = !!existing;
+      $("#fill", m).addEventListener("input", (e) => { fillTouched = true; $("#fillOut", m).textContent = e.target.value; });
+      $$("input[name=size]", m).forEach((r) => r.addEventListener("change", () => {
+        if (fillTouched) return;
+        const v = defaultFill(r.value); $("#fill", m).value = v; $("#fillOut", m).textContent = v;
+      }));
       $("#itemForm", m).addEventListener("submit", (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
         if (!chosen) { toast("Pick a perfume from the catalog first.", "error"); return; }
-        const data = { perfume_id: chosen.id, size: f.get("size"), volume_ml: f.get("volume_ml"), fill_pct: f.get("fill_pct"), tradeable: !!f.get("tradeable"), note: f.get("note").trim() };
+        const quantity = Math.round(Number(f.get("quantity")));
+        if (!(quantity >= 0 && quantity <= 99)) { toast("How many: choose a number from 0 to 99.", "error"); return; }
+        const data = { perfume_id: chosen.id, size: f.get("size"), volume_ml: f.get("volume_ml"), fill_pct: f.get("fill_pct"), quantity, tradeable: !!f.get("tradeable") && quantity > 0, note: f.get("note").trim() };
         const photo = f.get("photo") && f.get("photo").size ? f.get("photo") : null;
         run($("#saveItem", m), async () => {
           if (existing) await api.updateItem(existing.id, data, photo); else await api.addItem(data, photo);
@@ -304,10 +327,21 @@
   // ---------- Distance & meet-ups ----------
   const NEAR_MILES = 20; // same limit as the database (migration 011)
   const PIN = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg>`);
+  // My swap country (US, CA or RO). Matches, browsing, meetups and swaps stay inside it.
+  const myCC = () => state.profile?.country_code || "US";
+  const myCountry = () => Util.country(myCC());
+  // The database works in miles; Canada and Romania read kilometres.
+  function distText(miles) {
+    if (miles == null) return "";
+    if (myCountry().unit === "mi") return `${miles} mi`;
+    const km = miles * 1.609;
+    return `${km <= 32 ? Math.max(1, Math.round(km)) : Math.round(km / 5) * 5} km`;
+  }
+  const nearText = () => (myCountry().unit === "mi" ? `${NEAR_MILES} miles` : "30 km");
   // Rounded distance from the database: shown as "Nearby · about 5 mi" up to 20 miles, "about 35 mi" up to 50, nothing beyond.
   function distanceBadge(miles) {
     if (miles == null) return "";
-    return miles <= NEAR_MILES ? html`<span class="pill ok near">${PIN}Nearby · about ${miles} mi</span>` : html`<span class="pill grey">about ${miles} mi</span>`;
+    return miles <= NEAR_MILES ? html`<span class="pill ok near">${PIN}Nearby · about ${distText(miles)}</span>` : html`<span class="pill grey">about ${distText(miles)}</span>`;
   }
   // A small square map of a member's general area: OpenStreetMap tiles around a point the database
   // has already blurred to 0.1° (~5–7 miles). No pin — it shows the area, never the exact spot.
@@ -489,6 +523,10 @@
   async function pageWelcome() {
     document.body.classList.add("signed-out");
     const demo = api.mode === "demo";
+    // A good first guess for the country picker, from the device's time zone (the member can change it).
+    let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { /* older browser */ }
+    const guessCC = tz === "Europe/Bucharest" ? "RO"
+      : /^America\/(Toronto|Vancouver|Montreal|Edmonton|Winnipeg|Halifax|Regina|St_Johns|Moncton|Whitehorse|Yellowknife|Iqaluit|Glace_Bay|Goose_Bay)/.test(tz) ? "CA" : "US";
     setView(html`<section class="welcome">
       <div class="hero">
         <div class="eyebrow">A perfume swap community</div>
@@ -501,7 +539,16 @@
           <li>Addresses stay private until both of you accept the swap.</li>
           <li>Reviews and a completed-swap count help you trade with confidence.</li>
         </ul>
-        <p class="small muted" style="margin-top:14px">Currently for members in the ${CFG.LAUNCH_COUNTRY} only — perfume can't easily cross borders by mail.</p>
+        <p class="small muted" style="margin-top:14px">Open in ${Util.openCountriesText()}. Members swap within their own country — perfume can't easily cross borders by mail.
+          <button type="button" class="linklike" id="askCountry">Not in your country yet?</button></p>
+        <form class="card ask-country" id="askForm" hidden>
+          <h3>Bring Swapfume to my country</h3>
+          <p class="small muted">Leave your email and country. We'll write once when Swapfume opens there — nothing else.</p>
+          <div class="two field"><div><label for="acCountry">Country</label><input id="acCountry" type="text" required minlength="2" maxlength="60" autocomplete="country-name"></div>
+            <div><label for="acEmail">Email</label><input id="acEmail" type="email" required maxlength="200" autocomplete="email"></div></div>
+          <p class="small muted" style="margin-top:0">See our <a href="#/privacy">Privacy Policy</a>.</p>
+          <button class="btn" id="acSend">Ask for my country</button>
+        </form>
         ${appStoreBadge("hero-badge")}
       </div>
       <div class="card">
@@ -510,6 +557,8 @@
           <div class="field" id="nameField" hidden><label for="dn">Display name</label><input id="dn" type="text" maxlength="40" autocomplete="nickname" placeholder="What should people call you?"></div>
           <div class="field"><label for="em">Email</label><input id="em" type="email" required autocomplete="email"></div>
           <div class="field"><label for="pw">Password</label><input id="pw" type="password" required minlength="8" autocomplete="current-password"><p class="hint" id="pwHint" hidden>At least 8 characters.</p></div>
+          <div class="field" id="ccField" hidden><label for="cc">Country you live in</label><select id="cc">${Util.COUNTRIES.map((c) => html`<option value="${c.code}" ${c.code === guessCC ? raw("selected") : ""}>${c.name}</option>`)}</select>
+            <p class="hint">You'll swap with members in the same country.</p></div>
           <div class="field" id="dobField" hidden><label for="dob">Date of birth</label><input id="dob" type="date" min="1900-01-01" max="${new Date().toISOString().slice(0, 10)}" autocomplete="bday"><p class="hint">Swapfume is for people ${CFG.MIN_AGE} and older. We keep only a yes/no — never your birthday.</p></div>
           <div class="field"><button class="btn block" id="authBtn">Sign in</button></div>
           <p class="small" id="forgotRow" style="margin:0"><a href="#/forgot">Forgot password?</a> · <a href="#/confirm-email">Resend confirmation email</a></p>
@@ -523,7 +572,7 @@
       mode = b.dataset.tab;
       $$("[data-tab]").forEach((x) => x.setAttribute("aria-selected", x === b));
       $("#nameField").hidden = mode === "in"; $("#pwHint").hidden = mode === "in";
-      $("#dobField").hidden = mode === "in"; $("#dob").required = mode === "up";
+      $("#dobField").hidden = mode === "in"; $("#dob").required = mode === "up"; $("#ccField").hidden = mode === "in";
       $("#forgotRow").hidden = mode === "up"; $("#agreeRow").hidden = mode === "in";
       $("#authBtn").textContent = mode === "in" ? "Sign in" : "Create account";
       $("#pw").autocomplete = mode === "in" ? "current-password" : "new-password";
@@ -537,13 +586,21 @@
           const birthdate = $("#dob").value;
           if (!birthdate) throw new Error("Please enter your date of birth.");
           if (!isAdult(birthdate)) throw new Error(`Sorry — you must be ${CFG.MIN_AGE} or older to join Swapfume.`);
-          const r = await api.signUp({ email, password, display_name: $("#dn").value, birthdate });
+          const r = await api.signUp({ email, password, display_name: $("#dn").value, birthdate, country_code: $("#cc").value });
           if (r.needsConfirmation) { toast("Check your email to confirm your account, then sign in."); return; }
           sessionStorage.setItem("swapfume_new", "1");
         }
       });
     });
     $$("[data-as]").forEach((b) => b.addEventListener("click", () => api.demoSwitchUser(b.dataset.as)));
+    $("#askCountry").addEventListener("click", () => { $("#askForm").hidden = false; $("#acCountry").focus(); });
+    $("#askForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#acSend"), async () => {
+        await api.requestCountry($("#acEmail").value, $("#acCountry").value);
+        $("#askForm").innerHTML = val(html`<h3>Thank you! 💐</h3><p class="small muted" style="margin:0">We'll let you know when Swapfume opens in ${$("#acCountry").value}.</p>`);
+      });
+    });
   }
 
   async function pageHome() {
@@ -553,8 +610,8 @@
     const wantIds = myWishes.map((w) => w.perfume_id);
     const haveIds = [...new Set(myTradeable.map((i) => i.perfume_id))];
     const [theyHave, theyWant] = await Promise.all([
-      api.listItems({ tradeableOnly: true, perfumeIds: wantIds, excludeOwnerId: uid }),
-      api.listWishes({ perfumeIds: haveIds, excludeUserId: uid })
+      api.listItems({ tradeableOnly: true, perfumeIds: wantIds, excludeOwnerId: uid, country: myCC() }),
+      api.listWishes({ perfumeIds: haveIds, excludeUserId: uid, country: myCC() })
     ]);
     const people = new Map();
     const person = (u) => { if (!people.has(u.id)) people.set(u.id, { user: u, has: [], wants: [] }); return people.get(u.id); };
@@ -564,8 +621,10 @@
     const perfect = all.filter((x) => x.has.length && x.wants.length).sort((a, b) => b.has.length + b.wants.length - a.has.length - a.wants.length);
     const hasOnly = all.filter((x) => x.has.length && !x.wants.length);
     const wantsOnly = all.filter((x) => !x.has.length && x.wants.length);
-    const [stats, dist, myLoc] = await Promise.all([api.getStats(all.map((x) => x.user.id)), api.memberDistances(all.map((x) => x.user.id)).catch(() => ({})), api.getMyLocation().catch(() => null)]);
+    const [stats, dist, myLoc, meetups] = await Promise.all([api.getStats(all.map((x) => x.user.id)), api.memberDistances(all.map((x) => x.user.id)).catch(() => ({})), api.getMyLocation().catch(() => null),
+      api.listEvents({ country: myCC() }).catch(() => [])]);
     const p = state.profile;
+    const nextMeetups = meetups.filter((e) => e.status === "active").slice(0, 2);
     // Nearby people first within each group.
     const near = (x) => (dist[x.user.id] != null && dist[x.user.id] <= NEAR_MILES ? 1 : 0);
     [perfect, hasOnly, wantsOnly].forEach((list) => list.sort((a, b) => near(b) - near(a)));
@@ -573,7 +632,7 @@
     const steps = [
       [!!(p.city || p.country), "Add your city and a short bio", "#/me"],
       [!!address, "Add your shipping address (kept private)", "#/me"],
-      [!!myLoc, "Add your ZIP code to find swappers nearby (kept private)", "#/me"],
+      [!!myLoc, `Add your ${myCountry().postal} to find swappers nearby (kept private)`, "#/me"],
       [mine.length > 0, "Add a perfume you have", "#/collection"],
       [myWishes.length > 0, "Add a perfume you want", "#/collection?tab=want"]
     ];
@@ -584,7 +643,7 @@
       return html`<article class="card match">
         <div class="match-head">${avatar(x.user)}<div class="grow"><a class="name" href="#/u/${x.user.id}">${x.user.display_name}</a><div class="row small muted">${place(x.user)} ${distanceBadge(dist[x.user.id])} ${trust(stats[x.user.id])}</div></div>
           ${kind === "perfect" ? html`<span class="pill rose">Two-way match</span>` : ""}</div>
-        ${near(x) ? html`<p class="small near-hint">${PIN} You're about ${dist[x.user.id]} mile${dist[x.user.id] === 1 ? "" : "s"} apart — you could meet up to swap instead of shipping.</p>` : ""}
+        ${near(x) ? html`<p class="small near-hint">${PIN} You're about ${distText(dist[x.user.id])} apart — you could meet up to swap instead of shipping.</p>` : ""}
         <div class="match-sides">
           ${x.has.length ? html`<div class="side"><h4>They have, you want</h4><ul>${x.has.map((i) => html`<li><b>${i.perfume.name}</b> <span class="muted">${i.perfume.brand} · ${SIZE_LABEL[i.size]}${i.volume_ml ? " " + +i.volume_ml + " ml" : ""}</span></li>`)}</ul></div>` : ""}
           ${x.wants.length ? html`<div class="side"><h4>They want, you have</h4><ul>${x.wants.map((w) => html`<li><b>${w.perfume.name}</b> <span class="muted">${w.perfume.brand} · your ${myMatching(w.perfume_id).map((i) => SIZE_LABEL[i.size].toLowerCase()).join(", ")}</span></li>`)}</ul></div>` : ""}
@@ -601,6 +660,9 @@
         : html`<div class="empty"><h3>No two-way matches yet</h3><p>Add more to your wishlist and mark bottles as “open to trade” — matches appear here automatically.</p><a class="btn secondary" href="#/collection">Update my collection</a></div>`}
       ${hasOnly.length ? html`<h2>Has something you want</h2><p class="muted">They haven't listed anything of yours on their wishlist, but you can still ask.</p><div class="stack">${hasOnly.map((x) => matchCard(x, "has"))}</div>` : ""}
       ${wantsOnly.length ? html`<h2>Wants something you have</h2><div class="stack">${wantsOnly.map((x) => matchCard(x, "wants"))}</div>` : ""}
+      <h2>Community meetups</h2>
+      ${nextMeetups.length ? html`<div class="meetup-list">${nextMeetups.map(meetupCard)}</div><p><a href="#/meetups">See all meetups →</a></p>`
+        : html`<div class="card"><p style="margin:0">Meet perfume lovers near you to share, decant and swap — no money, ever. <a href="#/meetup/new">Organize the first meetup</a> or <a href="#/meetups">see past ones</a>.</p></div>`}
     `);
   }
 
@@ -618,8 +680,8 @@
     let items;
     if (q) {
       const ps = await api.searchCatalog(q, { limit: 200 });
-      items = await api.listItems({ tradeableOnly: true, perfumeIds: ps.map((p) => p.id), excludeOwnerId: state.uid });
-    } else items = await api.listItems({ tradeableOnly: true, excludeOwnerId: state.uid, limit: 120 });
+      items = await api.listItems({ tradeableOnly: true, perfumeIds: ps.map((p) => p.id), excludeOwnerId: state.uid, country: myCC() });
+    } else items = await api.listItems({ tradeableOnly: true, excludeOwnerId: state.uid, country: myCC(), limit: 120 });
     if (size) items = items.filter((i) => i.size === size);
     $("#results").innerHTML = val(items.length ? html`<p class="small muted">${items.length} listing${items.length === 1 ? "" : "s"}</p><div class="grid">${items.map((i) => itemTile(i, { owner: true }))}</div>`
       : html`<div class="empty"><h3>Nothing here yet</h3><p>${q ? "No one is trading that right now. Add it to your wishlist and you'll see it in Matches when someone lists it." : "No listings yet."}</p><a class="btn secondary" href="#/collection?tab=want">Go to my wishlist</a></div>`);
@@ -682,7 +744,7 @@
 
   function postLine(i) {
     const p = i.perfume || {};
-    const bits = [SIZE_LABEL[i.size], i.volume_ml ? `${+i.volume_ml} ml` : "", i.size !== "sample" && i.fill_pct != null && i.fill_pct < 100 ? `about ${i.fill_pct}% left` : ""].filter(Boolean);
+    const bits = [(i.quantity ?? 1) > 1 ? `${i.quantity} × ${SIZE_LABEL[i.size].toLowerCase()}` : SIZE_LABEL[i.size], i.volume_ml ? `${+i.volume_ml} ml` : "", i.fill_pct != null && i.fill_pct < 100 ? `about ${i.fill_pct}% left` : ""].filter(Boolean);
     return `${p.brand} ${p.name}${p.concentration ? ` (${p.concentration})` : ""}${bits.length ? " · " + bits.join(", ") : ""}`;
   }
   const me = () => state.profile?.display_name || "me";
@@ -694,7 +756,7 @@
       // Reddit uses Markdown: "- " for bullets, ** for bold. Plain and factual reads best there.
       const lines = ["Hi all! I'm swapping perfume for perfume (no money). Here's what I have open for trade:", "", ...items.map((i) => "- " + postLine(i).replace(" · ", " — "))];
       if (wishList.length) lines.push("", "**On my wishlist:**", "", ...wishList.map((w) => "- " + pTitle(w.perfume)), ...(more ? [`- …and ${more} more`] : []));
-      lines.push("", `US only. I'm “${me()}” on Swapfume (${SITE_URL}), a free swap community, or just comment / DM me here.`);
+      lines.push("", `In ${myCountry().the}. I'm “${me()}” on Swapfume (${SITE_URL}), a free swap community, or just comment / DM me here.`);
       return lines.join("\n");
     }
     if (net === "instagram") {
@@ -978,7 +1040,7 @@
     const body = $("#tabBody");
     if (tab === "have") {
       const openItems = items.filter((i) => i.tradeable && !i.is_hidden);
-      body.innerHTML = val(html`<div class="row between" style="margin-bottom:14px"><p class="muted small" style="margin:0">${items.filter((i) => i.tradeable).length} open to trade</p>
+      body.innerHTML = val(html`<div class="row between" style="margin-bottom:14px"><p class="small" style="margin:0">${availableText(items) ? html`<b>Available to swap:</b> ${availableText(items)}` : html`<span class="muted">Nothing open to trade yet</span>`}</p>
           <div class="row" style="gap:8px"><button class="btn" id="addItem">Add a perfume</button></div></div>
         ${openItems.length ? html`<div class="share-row"><span class="muted small">Share what you're trading:</span>${Object.entries(NETWORKS).map(([k, n]) => html`<button class="btn small secondary net-btn" data-share="${k}">${n.icon}<span>${n.label}</span></button>`)}</div>` : ""}
         ${items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { mine: true }))}</div>` : html`<div class="empty"><h3>Your shelf is empty</h3><p>Add the samples, decants and bottles you own. Mark the ones you'd trade.</p></div>`}`);
@@ -989,7 +1051,7 @@
         const i = items.find((x) => x.id == b.dataset.toggle); await api.updateItem(i.id, { tradeable: !i.tradeable }); route();
       })));
     } else {
-      const counts = await api.listItems({ tradeableOnly: true, perfumeIds: wishes.map((w) => w.perfume_id), excludeOwnerId: state.uid });
+      const counts = await api.listItems({ tradeableOnly: true, perfumeIds: wishes.map((w) => w.perfume_id), excludeOwnerId: state.uid, country: myCC() });
       body.innerHTML = val(html`<div class="field"><label>Add to wishlist</label><div id="wishPick"></div></div>
         ${wishes.length ? html`<ul class="list card" style="margin-top:16px">${wishes.map((w) => {
           const n = counts.filter((i) => i.perfume_id === w.perfume_id).length;
@@ -1006,8 +1068,8 @@
     const p = await api.getPerfume(id);
     if (!p) return setView(html`<div class="empty"><h3>Perfume not found</h3></div>`);
     const [items, wishes, mineW, memberPhoto, myPhoto] = await Promise.all([
-      api.listItems({ tradeableOnly: true, perfumeIds: [p.id], excludeOwnerId: state.uid }),
-      api.listWishes({ perfumeIds: [p.id] }), api.listWishes({ userId: state.uid }), api.latestMemberPhoto(p.id),
+      api.listItems({ tradeableOnly: true, perfumeIds: [p.id], excludeOwnerId: state.uid, country: myCC() }),
+      api.listWishes({ perfumeIds: [p.id], country: myCC() }), api.listWishes({ userId: state.uid }), api.latestMemberPhoto(p.id),
       api.myPendingPhoto(p.id).catch(() => null)]);
     const onMyList = mineW.find((w) => w.perfume_id === p.id);
     const isAdmin = !!state.profile?.is_admin;
@@ -1241,13 +1303,18 @@
     const iBlocked = blocks.some((b) => b.blocked_id === id);
     const shown = isMe ? items : items.filter((i) => i.tradeable);
     const miles = dist[id];
+    // Swaps stay inside one country (database rule, migration 016).
+    const otherCountry = !isMe && (p.country_code || "US") !== myCC();
+    const canSwap = !p.is_banned && !iBlocked && !otherCountry;
     setView(html`<div class="card"><div class="profile-top"><div class="profile-head">${avatar(p, "lg")}<div><h1>${p.display_name}</h1><div class="muted row" style="gap:8px">${place(p) || "Location not set"} ${distanceBadge(miles)}</div><div style="margin-top:6px">${trust(stats[id])}</div></div></div>
         ${iBlocked ? "" : areaMap(area, p.city)}</div>
-        ${!iBlocked && miles != null && miles <= NEAR_MILES ? html`<div class="notice ok" style="margin-top:12px">${PIN} You're about ${miles} mile${miles === 1 ? "" : "s"} apart. When you propose a swap you can choose <b>Meet in person</b> instead of shipping.</div>` : ""}
+        ${!iBlocked && miles != null && miles <= NEAR_MILES ? html`<div class="notice ok" style="margin-top:12px">${PIN} You're about ${distText(miles)} apart. When you propose a swap you can choose <b>Meet in person</b> instead of shipping.</div>` : ""}
         ${p.is_banned ? html`<div class="notice rose" style="margin-top:12px">This account has been suspended.</div>` : ""}
+        ${otherCountry ? html`<div class="notice" style="margin-top:12px">${p.display_name} swaps in ${Util.country(p.country_code).the}. Swaps happen within one country, because perfume can't be mailed across borders.</div>` : ""}
         ${p.bio ? html`<p style="margin-top:14px">${p.bio}</p>` : ""}
+        ${!iBlocked && availableText(items) ? html`<p class="small" style="margin-top:10px"><b>Available to swap:</b> ${availableText(items)}</p>` : ""}
         ${iBlocked ? html`<div class="notice" style="margin-top:12px">You blocked ${p.display_name}. You don't see each other's listings or wishlists, and neither of you can propose a swap. They aren't told.</div>` : ""}
-        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${!p.is_banned && !iBlocked && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}${!p.is_banned && !iBlocked ? html`<a class="btn secondary gift-btn" href="#/gift/${id}">${GIFT_ICON}<span>Give a gift</span></a>` : ""}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}${state.profile?.is_admin && p.avatar_url ? html`<button class="btn ghost" id="clearAvatar">Remove profile photo <span class="pill gold">Admin</span></button>` : ""}`}</div></div>
+        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${canSwap && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}${canSwap ? html`<a class="btn secondary gift-btn" href="#/gift/${id}">${GIFT_ICON}<span>Give a gift</span></a>` : ""}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}${state.profile?.is_admin && p.avatar_url ? html`<button class="btn ghost" id="clearAvatar">Remove profile photo <span class="pill gold">Admin</span></button>` : ""}`}</div></div>
       ${iBlocked ? "" : html`<h2>${isMe ? "Collection" : "Open to trade"}</h2>
       ${shown.length ? html`<div class="grid">${shown.map((i) => html`<div>${itemTile(i)}${isMe ? "" : html`<button class="btn small ghost" data-repitem="${i.id}" style="margin-top:4px">Report listing</button>`}</div>`)}</div>` : html`<p class="muted">Nothing listed for trade right now.</p>`}
       <h2>Wishlist</h2>
@@ -1266,6 +1333,13 @@
     $$("[data-repitem]").forEach((b) => b.addEventListener("click", () => reportDialog({ targetUserId: id, targetItemId: b.dataset.repitem, what: "this listing" })));
   }
 
+  // { itemId: how many } from the "How many?" pickers in a proposal form.
+  function pickedQty(fd) {
+    const q = {};
+    for (const [k, v] of fd.entries()) if (k.startsWith("qty-")) q[k.slice(4)] = Number(v) || 1;
+    return q;
+  }
+
   async function pagePropose(otherId, _params, gift = false) {
     if (otherId === state.uid) return go("/collection");
     const [other, theirs, mine, myW, theirW, address, stats, dist, myLoc] = await Promise.all([
@@ -1275,6 +1349,7 @@
     const miles = dist[otherId], canMeet = miles != null && miles <= NEAR_MILES;
     if (!other) return setView(html`<div class="empty"><h3>Member not found</h3></div>`);
     if ((await api.listBlocks()).some((b) => b.blocked_id === otherId)) return setView(html`<div class="empty"><h3>You blocked ${other.display_name}</h3><p>Unblock them from their profile to swap again.</p><a class="btn secondary" href="#/u/${otherId}">Their profile</a></div>`);
+    if ((other.country_code || "US") !== myCC()) return setView(html`<div class="empty"><h3>${other.display_name} is in ${Util.country(other.country_code).the}</h3><p>Swaps and gifts happen within one country, because perfume can't be mailed across borders.</p><a class="btn secondary" href="#/u/${otherId}">Back to their profile</a></div>`);
     if (gift) return giftPage(other, mine, theirW, canMeet, miles, myLoc);
     const myT = mine.filter((i) => i.tradeable && !i.is_hidden);
     const wantSet = new Set(myW.map((w) => w.perfume_id)), theyWantSet = new Set(theirW.map((w) => w.perfume_id));
@@ -1285,7 +1360,7 @@
         <h2>How will you swap?</h2>
         <div class="method-pick" role="radiogroup" aria-label="How will you swap">
           <label class="method"><input type="radio" name="method" value="mail" checked><span><b>Ship by mail</b><span class="small muted">Addresses are shared once you both accept.</span></span></label>
-          <label class="method ${canMeet ? "" : "off"}"><input type="radio" name="method" value="meetup" ${canMeet ? "" : raw("disabled")}><span><b>${PIN} Meet in person</b><span class="small muted">${canMeet ? `You're about ${miles} mile${miles === 1 ? "" : "s"} apart. No addresses shared — you agree on a public place.` : !myLoc ? html`Add your ZIP code under <a href="#/me">Me</a> to see if you're within ${NEAR_MILES} miles.` : `Only for members ${NEAR_MILES} miles or less apart.`}</span></span></label>
+          <label class="method ${canMeet ? "" : "off"}"><input type="radio" name="method" value="meetup" ${canMeet ? "" : raw("disabled")}><span><b>${PIN} Meet in person</b><span class="small muted">${canMeet ? `You're about ${distText(miles)} apart. No addresses shared — you agree on a public place.` : !myLoc ? html`Add your ${myCountry().postal} under <a href="#/me">Me</a> to see if you're within ${nearText()}.` : `Only for members ${nearText()} or less apart.`}</span></span></label>
         </div>
         <div id="addrNote">${!address ? html`<div class="notice rose" style="margin-top:12px">Shipping by mail needs your address. It stays private until both of you accept. <a href="#/me">Add it now</a></div>` : ""}</div>
         <div id="meetNote" hidden><div class="notice ok" style="margin-top:12px"><b>Meeting safely</b>${SAFETY_TIPS}</div></div>
@@ -1300,19 +1375,20 @@
     bindSelectable(view);
     const method = () => (new FormData($("#pf")).get("method") || "mail");
     const refresh = () => {
-      const fd = new FormData($("#pf")), give = fd.getAll("mine").length, get = fd.getAll("their").length, meet = method() === "meetup";
+      const fd = new FormData($("#pf")), q = pickedQty(fd), count = (ids) => ids.reduce((t, i) => t + (q[i] || 1), 0);
+      const give = count(fd.getAll("mine")), get = count(fd.getAll("their")), meet = method() === "meetup";
       $("#swapSum").innerHTML = val(html`<span>You give <b>${give}</b> item${give === 1 ? "" : "s"}</span><span aria-hidden="true">⇄</span><span>You get <b>${get}</b> item${get === 1 ? "" : "s"}</span>
         ${give > 1 && get === 1 ? html`<span class="small muted">Several for one — great for a rarer or pricier perfume.</span>` : ""}`);
       $("#addrNote").hidden = meet; $("#meetNote").hidden = !meet;
       $("#sendProp").disabled = !theirs.length || !myT.length || !give || !get || (!meet && !address);
     };
-    $$("#pf input").forEach((i) => i.addEventListener("change", refresh));
+    $$("#pf input, #pf select").forEach((i) => i.addEventListener("change", refresh));
     refresh();
     $("#pf").addEventListener("submit", (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       run($("#sendProp"), async () => {
-        const id = await api.proposeSwap({ recipientId: otherId, myItemIds: fd.getAll("mine"), theirItemIds: fd.getAll("their"), message: $("#msg").value, method: method() });
+        const id = await api.proposeSwap({ recipientId: otherId, myItemIds: fd.getAll("mine"), theirItemIds: fd.getAll("their"), message: $("#msg").value, method: method(), qty: pickedQty(fd) });
         toast("Proposal sent."); go(`/swap/${id}`);
       });
     });
@@ -1327,7 +1403,7 @@
         <h2>How will you give it?</h2>
         <div class="method-pick" role="radiogroup" aria-label="How will you give it">
           <label class="method"><input type="radio" name="method" value="mail" checked><span><b>Ship by mail</b><span class="small muted">If they accept, you'll see their address. They won't see yours.</span></span></label>
-          <label class="method ${canMeet ? "" : "off"}"><input type="radio" name="method" value="meetup" ${canMeet ? "" : raw("disabled")}><span><b>${PIN} Meet in person</b><span class="small muted">${canMeet ? `You're about ${miles} mile${miles === 1 ? "" : "s"} apart. No addresses shared — you agree on a public place.` : !myLoc ? html`Add your ZIP code under <a href="#/me">Me</a> to see if you're within ${NEAR_MILES} miles.` : `Only for members ${NEAR_MILES} miles or less apart.`}</span></span></label>
+          <label class="method ${canMeet ? "" : "off"}"><input type="radio" name="method" value="meetup" ${canMeet ? "" : raw("disabled")}><span><b>${PIN} Meet in person</b><span class="small muted">${canMeet ? `You're about ${distText(miles)} apart. No addresses shared — you agree on a public place.` : !myLoc ? html`Add your ${myCountry().postal} under <a href="#/me">Me</a> to see if you're within ${nearText()}.` : `Only for members ${nearText()} or less apart.`}</span></span></label>
         </div>
         <div id="meetNote" hidden><div class="notice ok" style="margin-top:12px"><b>Meeting safely</b>${SAFETY_TIPS}</div></div>
         <h2>You'd give</h2>
@@ -1339,17 +1415,18 @@
     bindSelectable(view);
     const method = () => (new FormData($("#pf")).get("method") || "mail");
     const refresh = () => {
-      const give = new FormData($("#pf")).getAll("mine").length;
+      const fd = new FormData($("#pf")), q = pickedQty(fd), give = fd.getAll("mine").reduce((t, i) => t + (q[i] || 1), 0);
       $("#swapSum").innerHTML = val(html`<span>You give <b>${give}</b> item${give === 1 ? "" : "s"}</span><span aria-hidden="true">${GIFT_ICON}</span><span>Nothing asked in return</span>`);
       $("#meetNote").hidden = method() !== "meetup";
       $("#sendProp").disabled = !give;
     };
-    $$("#pf input").forEach((i) => i.addEventListener("change", refresh));
+    $$("#pf input, #pf select").forEach((i) => i.addEventListener("change", refresh));
     refresh();
     $("#pf").addEventListener("submit", (e) => {
       e.preventDefault();
       run($("#sendProp"), async () => {
-        const id = await api.offerGift({ recipientId: other.id, myItemIds: new FormData(e.target).getAll("mine"), message: $("#msg").value, method: method() });
+        const fd = new FormData(e.target);
+        const id = await api.offerGift({ recipientId: other.id, myItemIds: fd.getAll("mine"), message: $("#msg").value, method: method(), qty: pickedQty(fd) });
         toast("Gift offered. How lovely!"); go(`/swap/${id}`);
       });
     });
@@ -1382,7 +1459,7 @@
     const st = (done, now, t, d) => html`<li class="${done ? "done" : now ? "now" : ""}"><span class="mark">${done ? raw("&#10003;") : ""}</span><div><div class="t">${t}</div>${d ? html`<div class="d">${d}</div>` : ""}</div></li>`;
     const bothShipped = info.my.shipped && info.their.shipped, bothReceived = info.my.received && info.their.received;
     const closed = ["declined", "cancelled"].includes(s.status);
-    const itemsList = (list) => html`<ul class="list">${list.map((x) => html`<li class="row" style="gap:12px;flex-wrap:nowrap"><div style="width:34px;height:48px;flex:none">${bottleSvg(x.perfume, x.size)}</div><div><div class="brand">${x.perfume?.brand}</div><b class="pname" style="font-size:1.05rem">${x.perfume?.name}</b><div class="meta">${SIZE_LABEL[x.size]}${x.volume_ml ? " · " + +x.volume_ml + " ml" : ""}</div></div></li>`)}</ul>`;
+    const itemsList = (list) => html`<ul class="list">${list.map((x) => html`<li class="row" style="gap:12px;flex-wrap:nowrap"><div style="width:34px;height:48px;flex:none">${bottleSvg(x.perfume, x.size)}</div><div><div class="brand">${x.perfume?.brand}</div><b class="pname" style="font-size:1.05rem">${x.perfume?.name}</b><div class="meta">${(x.quantity ?? 1) > 1 ? html`<b>${x.quantity} ×</b> ` : ""}${SIZE_LABEL[x.size]}${x.volume_ml ? " · " + +x.volume_ml + " ml" : ""}</div></div></li>`)}</ul>`;
 
     const meet = s.method === "meetup", gift = info.gift;
     const bothMet = info.my.received && info.their.received;
@@ -1467,6 +1544,7 @@
 
   async function pageMe() {
     const p = state.profile, [addr, blocks, loc, myArea] = await Promise.all([api.getMyAddress(), api.listBlocks(), api.getMyLocation().catch(() => null), api.memberArea(state.uid).catch(() => null)]);
+    const C = myCountry();
     setView(html`<div class="page-head"><div class="row between" style="align-items:center;flex-wrap:nowrap;gap:12px"><h1 style="margin:0">My profile</h1><button class="btn secondary small" data-signout>Sign out</button></div>
       <p class="small muted" style="margin:4px 0 6px">Signed in as <b>${p.display_name}</b></p><p>Your name, city and bio are visible to members. Your address is private.</p></div>
       <form class="card" id="profForm"><h3>Public profile</h3>
@@ -1475,19 +1553,20 @@
           ${p.avatar_url ? html`<button type="button" class="btn small ghost" id="avRemove">Remove</button>` : ""}</div>
           <p class="hint" style="margin-top:6px">Shown next to your name. A friendly face or your favourite bottle — no addresses or other people.</p></div></div>
         <div class="field"><label for="pn">Display name</label><input id="pn" type="text" required maxlength="40" value="${p.display_name}"></div>
-        <div class="two field"><div><label for="pc">City</label><input id="pc" type="text" maxlength="80" value="${p.city}"></div><div><label for="pk">Country</label><input id="pk" type="text" maxlength="80" value="${p.country || CFG.LAUNCH_COUNTRY}"></div></div>
+        <div class="two field"><div><label for="pc">City</label><input id="pc" type="text" maxlength="80" value="${p.city}"></div><div><label for="pk">Country</label><select id="pk">${Util.COUNTRIES.map((c) => html`<option value="${c.code}" ${c.code === C.code ? raw("selected") : ""}>${c.name}</option>`)}</select></div></div>
+        <p class="hint" style="margin-top:-6px">You see matches, swaps and meetups in your country — perfume can't be mailed across borders. Moved? Change it here (not while a swap is open).</p>
         <div class="field"><label for="pb">Short bio</label><textarea id="pb" maxlength="500" placeholder="What you love to wear, how you pack…">${p.bio}</textarea></div>
         <div class="field row"><button class="btn" id="saveProf">Save profile</button><a class="btn ghost" href="#/u/${p.id}">View my public page</a></div></form>
       <form class="card" id="addrForm"><h3>Shipping address <span class="pill">Private</span></h3>
         <p class="muted small">Shown only to a swap partner after you've both accepted a swap. Needed before you can propose or accept.</p>
         <div class="field"><label for="an">Name on the package</label><input id="an" type="text" required maxlength="120" autocomplete="name" value="${addr?.full_name || ""}"></div>
-        <div class="field"><label for="aa">Mailing address</label><textarea id="aa" required minlength="5" maxlength="500" autocomplete="street-address" placeholder="Street, city, state, ZIP">${addr?.address || ""}</textarea></div>
+        <div class="field"><label for="aa">Mailing address</label><textarea id="aa" required minlength="5" maxlength="500" autocomplete="street-address" placeholder="${C.addr}">${addr?.address || ""}</textarea></div>
         <div class="field"><button class="btn" id="saveAddr">Save address</button></div></form>
       <form class="card" id="zipForm"><h3>${PIN} Your area <span class="pill">Private</span></h3>
-        <p class="muted small">Your ZIP code lets Swapfume show who's nearby and suggest meeting in person within ${NEAR_MILES} miles. Nobody sees your ZIP code — other members only see your city, roughly how far away you are (e.g. “about 8 miles”) and a small map of your general area, never your exact spot.</p>
-        <div class="row" style="align-items:flex-end"><div style="flex:0 1 180px"><label for="zipIn">ZIP code</label><input id="zipIn" type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code" value="${loc?.zip || ""}" placeholder="e.g. 11201" required></div>
+        <p class="muted small">Your ${C.postal} lets Swapfume show who's nearby and suggest meeting in person within ${nearText()}. Nobody sees your ${C.postal} — other members only see your city, roughly how far away you are (e.g. “about ${C.unit === "mi" ? "8 miles" : "12 km"}”) and a small map of your general area, never your exact spot.${C.code === "CA" ? " Only the first 3 characters are kept." : ""}</p>
+        <div class="row" style="align-items:flex-end"><div style="flex:0 1 180px"><label for="zipIn">${C.postal[0].toUpperCase() + C.postal.slice(1)}</label><input id="zipIn" type="text" ${C.code === "CA" ? "" : raw('inputmode="numeric"')} maxlength="8" autocomplete="postal-code" value="${loc?.zip || ""}" placeholder="e.g. ${C.example}" required></div>
           <button class="btn" id="saveZip">${loc ? "Update" : "Save"}</button>${loc ? html`<button type="button" class="btn ghost" id="clearZip">Remove</button>` : ""}</div>
-        ${myArea ? html`<div class="zip-preview"><div>${areaMap(myArea, p.city)}</div><p class="small muted">This is what members see on your profile: the general area, centred on a point blurred by several miles. Your ZIP code and exact location are never shown.</p></div>` : ""}</form>
+        ${myArea ? html`<div class="zip-preview"><div>${areaMap(myArea, p.city)}</div><p class="small muted">This is what members see on your profile: the general area, centred on a point blurred by several miles. Your ${C.postal} and exact location are never shown.</p></div>` : ""}</form>
       <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a></div></div>
       <div class="card"><h3>Blocked members</h3>
         ${blocks.length ? html`<ul class="list">${blocks.map((b) => html`<li class="row between"><span>${avatar(b.blocked)} <a href="#/u/${b.blocked_id}">${b.blocked?.display_name || "Former member"}</a></span><button class="btn small ghost" data-unblock="${b.blocked_id}">Unblock</button></li>`)}</ul>`
@@ -1501,10 +1580,14 @@
     $("#avFile").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) run(null, async () => { state.profile = await api.setMyAvatar(f); toast("Profile photo saved."); route(); }); });
     const avr = $("#avRemove"); if (avr) avr.addEventListener("click", () => run(avr, async () => { state.profile = await api.setMyAvatar(null); toast("Profile photo removed."); route(); }));
     $("#profForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveProf"), async () => {
-      state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: $("#pk").value, bio: $("#pb").value }); toast("Profile saved."); }); });
+      const cc = $("#pk").value, moved = cc !== C.code;
+      if (moved && !(await confirmBox(`Move to ${Util.country(cc).name}?`, `You'll see matches, swaps and meetups in ${Util.country(cc).the}. Your saved ${C.postal} will be removed — add your new one under “Your area”.`, "Change country"))) return;
+      if (moved) await api.setMyCountry(cc);
+      state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: Util.country(cc).name, bio: $("#pb").value });
+      toast("Profile saved."); if (moved) route(); }); });
     $("#addrForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveAddr"), async () => { await api.saveMyAddress({ full_name: $("#an").value, address: $("#aa").value }); toast("Address saved."); }); });
-    $("#zipForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveZip"), async () => { await api.setMyLocation($("#zipIn").value); toast("ZIP code saved. Nearby swappers will show in your matches."); route(); }); });
-    const cz = $("#clearZip"); if (cz) cz.addEventListener("click", () => run(cz, async () => { await api.clearMyLocation(); toast("ZIP code removed."); route(); }));
+    $("#zipForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveZip"), async () => { await api.setMyLocation($("#zipIn").value, C.code); toast(`${C.postal[0].toUpperCase() + C.postal.slice(1)} saved. Nearby swappers will show in your matches.`); route(); }); });
+    const cz = $("#clearZip"); if (cz) cz.addEventListener("click", () => run(cz, async () => { await api.clearMyLocation(); toast(`${C.postal[0].toUpperCase() + C.postal.slice(1)} removed.`); route(); }));
     $$("[data-signout]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.signOut(); location.hash = "/"; toast("You're signed out."); })));
     $("#delAcct").addEventListener("click", deleteAccountDialog);
     $$("[data-unblock]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.unblockUser(b.dataset.unblock); toast("Unblocked."); route(); })));
@@ -1586,7 +1669,7 @@
     if (!state.profile.is_admin) return setView(html`<div class="empty"><h3>Admins only</h3></div>`);
     const tab = params.get("tab") || "catalog";
     setView(html`<div class="page-head"><div class="eyebrow">Admin</div><h1>Moderation</h1></div>
-      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["dups", "Duplicates"], ["notes", "Notes corrections"], ["photos", "Photos"], ["import", "Import CSV"], ["reports", "Reports"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
+      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["dups", "Duplicates"], ["notes", "Notes corrections"], ["photos", "Photos"], ["import", "Import CSV"], ["reports", "Reports"], ["meetups", "Meetups"], ["waitlist", "Country waitlist"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
     $$("[data-t]").forEach((b) => b.addEventListener("click", () => go(`/admin?tab=${b.dataset.t}`)));
     const ab = $("#ab");
     if (tab === "catalog") {
@@ -1604,6 +1687,27 @@
         const p = rows.find((r) => r.id === Number(b.dataset.mq)), x = p.similar.find((s) => s.id === Number(b.dataset.into));
         mergeDialog(p, x, route);
       }));
+    } else if (tab === "meetups") {
+      const [up, past] = await Promise.all([api.listEvents(), api.listEvents({ past: true })]);
+      const rows = [...up, ...past];
+      ab.innerHTML = val(html`<p class="muted small">Every meetup in every country, upcoming first. Hide one that breaks the rules (not a public place, selling, spam).</p>
+        ${rows.length ? html`<ul class="list card">${rows.map((e) => html`<li class="row between"><div><a class="pname" href="#/meetup/${e.id}">${e.title}</a>
+          <div class="small muted">${Util.country(e.country_code).name} · ${e.city} · ${fmtWhen(e.starts_at)} · by ${e.organizer?.display_name || "former member"} · ${e.attendees?.length || 0} going${e.status === "cancelled" ? " · cancelled" : ""}</div>
+          ${e.is_hidden ? html`<span class="pill warn">Hidden</span>` : ""}</div>
+          <button class="btn small ${e.is_hidden ? "secondary" : "ghost"}" data-evh="${e.id}" data-h="${e.is_hidden ? "0" : "1"}">${e.is_hidden ? "Show again" : "Hide"}</button></li>`)}</ul>`
+          : html`<div class="empty"><p>No meetups yet.</p></div>`}`);
+      $$("[data-evh]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setEventHidden(b.dataset.evh, b.dataset.h === "1"); toast(b.dataset.h === "1" ? "Meetup hidden." : "Meetup visible again."); route(); })));
+    } else if (tab === "waitlist") {
+      const rows = await api.listCountryRequests();
+      const byCountry = {};
+      rows.forEach((r) => { const k = r.country.trim().toLowerCase(); (byCountry[k] = byCountry[k] || { name: r.country.trim(), n: 0 }).n++; });
+      const top = Object.values(byCountry).sort((a, b) => b.n - a.n);
+      ab.innerHTML = val(html`<p class="muted small">People outside ${Util.openCountriesText()} asking for Swapfume. Email them only to say it has opened in their country; delete their entry after.</p>
+        ${top.length ? html`<div class="card"><h3>By country</h3><div class="row">${top.map((c) => html`<span class="pill">${c.name} · ${c.n}</span>`)}</div></div>
+          <ul class="list card">${rows.map((r) => html`<li class="row between"><div><b>${r.country}</b> <span class="small muted">· ${r.email} · ${fmtDate(r.created_at)}</span></div>
+            <button class="btn small ghost" data-wl="${r.id}">Delete</button></li>`)}</ul>`
+          : html`<div class="empty"><p>No requests yet.</p></div>`}`);
+      $$("[data-wl]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deleteCountryRequest(b.dataset.wl); toast("Deleted."); route(); })));
     } else if (tab === "dups") {
       const rows = await api.findDuplicatePerfumes();
       const side = (x) => html`<div class="dup-side"><div class="brand">${x.brand}</div><a class="pname" href="#/perfume/${x.id}">${x.name}</a>
@@ -1669,6 +1773,123 @@
     })));
   }
 
+  // ---------- Community meetups (migration 017) ----------
+  // Perfume lovers meeting in a public place to share, decant, sniff and swap. No money, ever.
+  const fmtWhen = (d) => new Date(d).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const CAL_ICON = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg>`);
+  const MEETUP_RULES = html`<ul class="tips">
+    <li>Meet only in a <b>public place</b>: a café, park or library. Never a home address.</li>
+    <li><b>No selling.</b> Share, swap and gift only — Swapfume is never about money.</li>
+    <li>Bring empty vials, labels and a funnel or decanting syringe if you'd like to decant.</li>
+    <li>Tell a friend where you're going, and leave if anything feels wrong.</li></ul>`;
+
+  function meetupCard(e) {
+    const going = e.attendees?.length || 0, iGo = e.attendees?.some((a) => a.user_id === state.uid);
+    const full = e.max_people && going >= e.max_people;
+    return html`<a class="card meetup-card ${e.status === "cancelled" ? "cancelled" : ""}" href="#/meetup/${e.id}">
+      <div class="meetup-date"><span class="m">${new Date(e.starts_at).toLocaleDateString(undefined, { month: "short" })}</span><span class="d">${new Date(e.starts_at).getDate()}</span></div>
+      <div class="grow"><h3>${e.title}</h3>
+        <div class="small muted">${fmtWhen(e.starts_at)} · ${e.city}</div>
+        <div class="small muted">${e.place}</div>
+        <div class="row" style="gap:6px;margin-top:6px">
+          <span class="pill">${going} going${e.max_people ? ` of ${e.max_people}` : ""}</span>
+          ${iGo ? html`<span class="pill ok">You're going</span>` : ""}${full && !iGo ? html`<span class="pill grey">Full</span>` : ""}
+          ${e.status === "cancelled" ? html`<span class="pill warn">Cancelled</span>` : ""}${e.is_hidden ? html`<span class="pill warn">Hidden by admin</span>` : ""}</div></div></a>`;
+  }
+
+  async function pageMeetups(params) {
+    const past = params.get("past") === "1";
+    const rows = await api.listEvents({ country: myCC(), past });
+    const mine = rows.filter((e) => e.organizer_id === state.uid);
+    setView(html`<div class="page-head"><div class="eyebrow">Sharing is caring</div><h1>Community meetups</h1>
+        <p>Perfume lovers getting together in ${myCountry().the}: bring what you'd like to share, sniff new things, decant for each other and swap. No money, ever.</p>
+        <div class="row" style="margin-top:10px"><a class="btn" href="#/meetup/new">Organize a meetup</a>
+          <a class="btn ghost" href="#/meetups${past ? "" : "?past=1"}">${past ? "Upcoming meetups" : "Past meetups"}</a></div></div>
+      ${rows.length ? html`<div class="meetup-list">${rows.map(meetupCard)}</div>`
+        : html`<div class="empty"><h3>${past ? "No past meetups yet" : "No meetups planned yet"}</h3><p>${past ? "" : "Be the first! Pick a café or park, a date, and invite the community."}</p>${past ? "" : html`<a class="btn" href="#/meetup/new">Organize a meetup</a>`}</div>`}
+      ${mine.length && !past ? html`<p class="small muted" style="margin-top:14px">You're organizing ${mine.length} of these.</p>` : ""}`);
+  }
+
+  async function pageMeetup(id) {
+    const e = await api.getEvent(id);
+    if (!e) return setView(html`<div class="empty"><h3>Meetup not found</h3><p>It may have been removed.</p><a class="btn secondary" href="#/meetups">All meetups</a></div>`);
+    const isOrg = e.organizer_id === state.uid, iGo = e.attendees.some((a) => a.user_id === state.uid);
+    const going = e.attendees.length, full = e.max_people && going >= e.max_people;
+    const over = new Date(e.starts_at) < new Date(Date.now() - 6 * 3600e3), open = e.status === "active" && !over;
+    const elsewhere = e.country_code !== myCC();
+    const link = `${SITE_URL}#/meetup/${e.id}`;
+    setView(html`<div class="card meetup-page">
+        <div class="eyebrow">Community meetup${e.status === "cancelled" ? " · cancelled" : over ? " · past" : ""}</div>
+        <h1 style="margin-top:4px">${e.title}</h1>
+        ${e.is_hidden ? html`<div class="notice rose">An admin has hidden this meetup. Only you${isOrg ? "" : " (admin)"} can see it.</div>` : ""}
+        ${e.status === "cancelled" ? html`<div class="notice rose">The organizer cancelled this meetup.</div>` : ""}
+        <ul class="facts">
+          <li>${CAL_ICON} <b>${fmtWhen(e.starts_at)}</b></li>
+          <li>${PIN} <span><b>${e.place}</b>, ${e.city}${elsewhere ? html` · ${Util.country(e.country_code).name}` : ""}</span></li>
+          <li>${avatar(e.organizer)} <span>Organized by <a href="#/u/${e.organizer_id}">${e.organizer?.display_name || "a former member"}</a></span></li>
+          <li><b>${going}</b> going${e.max_people ? ` · up to ${e.max_people} people` : ""}</li></ul>
+        ${e.description ? html`<p class="meetup-desc">${e.description}</p>` : ""}
+        <div class="row" style="margin-top:12px">
+          ${isOrg ? (open ? html`<a class="btn secondary" href="#/meetup/${e.id}/edit">Edit</a><button class="btn ghost" id="cancelEv">Cancel meetup</button>` : "")
+            : open && !elsewhere ? (iGo ? html`<span class="pill ok" style="align-self:center">You're going</span><button class="btn ghost" id="notGoing">I can't go anymore</button>`
+              : full ? html`<span class="pill grey" style="align-self:center">This meetup is full</span>` : html`<button class="btn" id="going">I'm going</button>`)
+            : elsewhere ? html`<p class="muted small">This meetup is in ${Util.country(e.country_code).the}.</p>` : ""}
+          <button class="btn ghost" id="shareEv">Share link</button>
+          ${!isOrg ? html`<button class="btn ghost" id="repEv">Report</button>` : ""}</div>
+      </div>
+      <div class="card"><h3>Before you go</h3>${MEETUP_RULES}</div>
+      <div class="card"><h3>Who's going</h3>
+        ${going ? html`<div class="row" style="gap:10px">${e.attendees.map((a) => html`<a class="attendee" href="#/u/${a.user_id}">${avatar(a.user)}<span>${a.user?.display_name || "Member"}${a.user_id === e.organizer_id ? " (organizer)" : ""}</span></a>`)}</div>` : html`<p class="muted small">Nobody yet.</p>`}</div>
+      <div class="card"><h3>Comments</h3>
+        ${e.comments.length ? html`<ul class="list">${e.comments.map((c) => html`<li><div class="row between"><span>${avatar(c.user)} <b>${c.user?.display_name || "Former member"}</b> <span class="small muted">· ${fmtDate(c.created_at)}</span></span>
+          ${c.user_id === state.uid || isOrg || state.profile.is_admin ? html`<button class="btn small ghost" data-delc="${c.id}">Remove</button>` : ""}</div><p style="margin:4px 0 0">${c.body}</p></li>`)}</ul>`
+          : html`<p class="muted small">No comments yet. Say what you're bringing, or ask a question!</p>`}
+        ${e.status === "active" ? html`<form id="comForm" class="row" style="margin-top:10px;align-items:flex-end;flex-wrap:nowrap"><div class="grow"><label for="comIn" class="visually-hidden">Comment</label>
+          <input id="comIn" type="text" maxlength="600" required placeholder="I'm bringing Baccarat Rouge and empty 5 ml vials!"></div><button class="btn" id="comSend">Post</button></form>` : ""}</div>
+      <p><a href="#/meetups">← All meetups</a></p>`);
+    const on = (sel, f) => { const b = $(sel); if (b) b.addEventListener("click", () => f(b)); };
+    on("#going", (b) => run(b, async () => { await api.joinEvent(e.id, true); toast("See you there! 💐"); route(); }));
+    on("#notGoing", (b) => run(b, async () => { await api.joinEvent(e.id, false); toast("Okay — you're no longer on the list."); route(); }));
+    on("#cancelEv", async () => { if (await confirmBox("Cancel this meetup?", "Everyone who said they're going will see it's cancelled. This can't be undone.", "Cancel meetup")) run(null, async () => { await api.cancelEvent(e.id); toast("Meetup cancelled."); route(); }); });
+    on("#shareEv", async () => {
+      const text = `${e.title} — ${fmtWhen(e.starts_at)}, ${e.place}, ${e.city}. A Swapfume community meetup (sharing is caring, no money).`;
+      try { if (navigator.share) { await navigator.share({ title: e.title, text, url: link }); return; } } catch (err) { if (err?.name === "AbortError") return; }
+      try { await navigator.clipboard.writeText(`${text} ${link}`); toast("Link copied — paste it anywhere."); } catch (err) { toast(link); }
+    });
+    on("#repEv", () => reportDialog({ targetUserId: e.organizer_id, what: `the meetup “${e.title}”` }));
+    $$("[data-delc]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deleteEventComment(b.dataset.delc); route(); })));
+    const cf = $("#comForm");
+    if (cf) cf.addEventListener("submit", (ev) => { ev.preventDefault(); run($("#comSend"), async () => { await api.commentEvent(e.id, $("#comIn").value); route(); }); });
+  }
+
+  // Organize (new) or edit a meetup.
+  async function pageMeetupForm(id) {
+    const e = id ? await api.getEvent(id) : null;
+    if (id && (!e || e.organizer_id !== state.uid)) return setView(html`<div class="empty"><h3>Only the organizer can edit this meetup</h3><a class="btn secondary" href="#/meetups">All meetups</a></div>`);
+    const pad = (n) => String(n).padStart(2, "0");
+    const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const def = new Date(Date.now() + 7 * 864e5); def.setHours(14, 0, 0, 0);
+    setView(html`<div class="page-head"><div class="eyebrow">Sharing is caring</div><h1>${e ? "Edit meetup" : "Organize a meetup"}</h1>
+        <p>Invite perfume lovers in ${myCountry().the} to meet, share and swap. Pick a public place — a café, a park, a library.</p></div>
+      <form class="card" id="evForm">
+        <div class="field"><label for="evTitle">Title</label><input id="evTitle" required minlength="3" maxlength="100" value="${e?.title || ""}" placeholder="Sunday sniff & swap picnic"></div>
+        <div class="two field"><div><label for="evWhen">Date and time</label><input id="evWhen" type="datetime-local" required min="${local(new Date())}" value="${local(e ? new Date(e.starts_at) : def)}"></div>
+          <div><label for="evMax">Maximum people <span class="muted">(optional)</span></label><input id="evMax" type="number" min="2" max="500" inputmode="numeric" value="${e?.max_people ?? ""}" placeholder="e.g. 12"></div></div>
+        <div class="two field"><div><label for="evCity">City</label><input id="evCity" required minlength="2" maxlength="80" value="${e?.city ?? state.profile.city ?? ""}" placeholder="Brooklyn, NY"></div>
+          <div><label for="evPlace">Public place</label><input id="evPlace" required minlength="3" maxlength="200" value="${e?.place || ""}" placeholder="Café name or park, and a meeting spot"></div></div>
+        <div class="field"><label for="evDesc">What's the plan? <span class="muted">(optional)</span></label><textarea id="evDesc" maxlength="2000" placeholder="Bring a few samples to share and some empty vials. I'll bring blotter strips and a funnel kit. Beginners welcome!">${e?.description || ""}</textarea></div>
+        <div class="notice ok" style="margin-bottom:14px"><b>Meetup rules</b>${MEETUP_RULES}</div>
+        <div class="row"><button class="btn" id="evSave">${e ? "Save changes" : "Publish meetup"}</button><a class="btn ghost" href="${e ? `#/meetup/${e.id}` : "#/meetups"}">Cancel</a></div>
+      </form>`);
+    $("#evForm").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      run($("#evSave"), async () => {
+        const newId = await api.saveEvent(e?.id, { title: $("#evTitle").value, description: $("#evDesc").value, city: $("#evCity").value, place: $("#evPlace").value, starts_at: $("#evWhen").value, max_people: $("#evMax").value });
+        toast(e ? "Meetup updated." : "Your meetup is published! Share the link so people can find it."); go(`/meetup/${newId}`);
+      });
+    });
+  }
+
   // ---------- Router ----------
   const routes = [
     [/^\/$/, pageHome, "home"],
@@ -1683,6 +1904,10 @@
     [/^\/swaps$/, pageSwaps, "swaps"],
     [/^\/swap\/(\d+)$/, pageSwap, "swaps"],
     [/^\/me$/, pageMe, "me"],
+    [/^\/meetups$/, pageMeetups, "meetups"],
+    [/^\/meetup\/new$/, () => pageMeetupForm(null), "meetups"],
+    [/^\/meetup\/(\d+)\/edit$/, (id) => pageMeetupForm(id), "meetups"],
+    [/^\/meetup\/(\d+)$/, pageMeetup, "meetups"],
     [/^\/admin$/, pageAdmin, "me"]
   ];
   // Pages anyone can open, signed in or not.

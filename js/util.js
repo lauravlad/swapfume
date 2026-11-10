@@ -116,26 +116,51 @@
     });
   }
 
-  // ZIP code -> its centre point, from js/data/zips.csv (US Census 2024 Gazetteer, public domain).
-  // Loaded only the first time someone saves a ZIP code.
-  let zipTable = null;
-  async function zipLookup(zip) {
-    zip = String(zip || "").trim();
-    if (!/^\d{5}$/.test(zip)) throw new Error("Please enter a 5-digit US ZIP code.");
-    if (!zipTable) {
-      const res = await fetch("js/data/zips.csv");
-      if (!res.ok) throw new Error("Couldn't load the ZIP code list. Please try again.");
-      zipTable = new Map();
+  // Countries Swapfume is open in (same list as the database, migration 016).
+  // Swaps happen only inside one country: perfume can't be mailed across borders.
+  const COUNTRIES = [
+    { code: "US", name: "United States", the: "the United States", postal: "ZIP code", example: "10001", unit: "mi",
+      file: "js/data/zips.csv", addr: "Street, apartment\nCity, State ZIP" },
+    { code: "CA", name: "Canada", the: "Canada", postal: "postal code", example: "M5V 3L9", unit: "km",
+      file: "js/data/postal-ca.csv", addr: "Street, unit\nCity, Province  Postal code" },
+    { code: "RO", name: "Romania", the: "Romania", postal: "postal code", example: "010011", unit: "km",
+      file: "js/data/postal-ro.csv", addr: "Strada, număr, bloc, apartament\nLocalitate, județ, cod poștal" }
+  ];
+  const country = (code) => COUNTRIES.find((c) => c.code === code) || COUNTRIES[0];
+  const openCountriesText = () => COUNTRIES.map((c) => c.the).join(", ").replace(/, ([^,]*)$/, " and $1");
+
+  // Postal code -> centre point. US: ZIP codes from the US Census 2024 Gazetteer (public domain).
+  // Canada (first 3 characters, e.g. M5V) and Romania: GeoNames (geonames.org, CC BY 4.0).
+  // Each list is loaded only the first time someone saves a code.
+  const postalTables = {};
+  function cleanPostal(code, cc) {
+    const z = String(code || "").toUpperCase().replace(/\s+/g, "");
+    if (cc === "CA") {
+      if (!/^[A-Z]\d[A-Z](\d[A-Z]\d)?$/.test(z)) throw new Error("Please enter a Canadian postal code, like M5V 3L9.");
+      return z.slice(0, 3);
+    }
+    if (cc === "RO") { if (!/^\d{6}$/.test(z)) throw new Error("Please enter a 6-digit Romanian postal code."); return z; }
+    if (!/^\d{5}$/.test(z)) throw new Error("Please enter a 5-digit US ZIP code.");
+    return z;
+  }
+  async function postalLookup(code, cc = "US") {
+    const info = country(cc), zip = cleanPostal(code, info.code);
+    if (!postalTables[info.code]) {
+      const res = await fetch(info.file);
+      if (!res.ok) throw new Error(`Couldn't load the ${info.postal} list. Please try again.`);
+      const t = new Map();
       (await res.text()).split("\n").forEach((line) => {
         if (!line || line[0] === "#") return;
         const [z, lat, lon] = line.split(",");
-        zipTable.set(z, [Number(lat), Number(lon)]);
+        t.set(z, [Number(lat), Number(lon)]);
       });
+      postalTables[info.code] = t;
     }
-    const hit = zipTable.get(zip);
-    if (!hit) throw new Error("We couldn't find that ZIP code. Check it and try again.");
+    const hit = postalTables[info.code].get(zip);
+    if (!hit) throw new Error(`We couldn't find that ${info.postal}. Check it and try again.`);
     return { zip, lat: hit[0], lon: hit[1] };
   }
+  const zipLookup = (zip) => postalLookup(zip, "US");
   // Great-circle distance in miles (demo mode; the real database does this itself).
   function milesBetween(a, b) {
     const r = (d) => (d * Math.PI) / 180;
@@ -145,5 +170,5 @@
   // Same rounding as member_distances(): nearest mile up to 20, nearest 5 up to 50, nothing beyond.
   const roundMiles = (d) => (d > 50 ? null : d <= 20 ? Math.max(1, Math.round(d)) : Math.round(d / 5) * 5);
 
-  window.Util = { normText, brandNameKey, perfumeKey, normWords, brandKey, canonicalBrand, tidyPerfumeName, similarity, wordSimilarity, oneWordTypo, resizeImage, zipLookup, milesBetween, roundMiles };
+  window.Util = { normText, brandNameKey, perfumeKey, normWords, brandKey, canonicalBrand, tidyPerfumeName, similarity, wordSimilarity, oneWordTypo, resizeImage, zipLookup, postalLookup, COUNTRIES, country, openCountriesText, milesBetween, roundMiles };
 })();

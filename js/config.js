@@ -11,7 +11,8 @@
 window.APP_CONFIG = {
   APP_NAME: "Swapfume",
   TAGLINE: "Swap the scents you love.",
-  LAUNCH_COUNTRY: "United States",   // shipping perfume across borders is restricted
+  // Countries Swapfume is open in: see COUNTRIES in js/util.js (and migration 016 in the database).
+  // Members swap only within their own country — perfume can't be mailed across borders.
   OPERATOR_NAME: "Octopup Studio",    // who runs the service (shown in Terms / Privacy)
   SUPPORT_EMAIL: "hello@swapfume.com",
   MIN_AGE: 18,

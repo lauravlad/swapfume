@@ -11,7 +11,8 @@
     { user_id: "m-noor", zip: "07030", lat: 40.75, lon: -74.03 },
     { user_id: "m-theo", zip: "97205", lat: 45.52, lon: -122.70 },
     { user_id: "m-june", zip: "78701", lat: 30.27, lon: -97.74 },
-    { user_id: "m-ravi", zip: "60611", lat: 41.89, lon: -87.62 }
+    { user_id: "m-ravi", zip: "60611", lat: 41.89, lon: -87.62 },
+    { user_id: "m-elodie", zip: "H2X", lat: 45.51, lon: -73.57 }
   ];
   const SESSION = "swapfume_demo_session_v1";
   const now = () => new Date().toISOString();
@@ -38,17 +39,18 @@
       ["m-theo", "theo@demo.test", "Theo", "Portland", "United States", "Woods, smoke, rain. I decant carefully and pack with bubble wrap.", false, "22 Fir St, Portland, OR 97205"],
       ["m-june", "june@demo.test", "June", "Austin", "United States", "Gourmand girl trying to branch out into greens.", false, "8 Pecan Ave, Austin, TX 78701"],
       ["m-ravi", "ravi@demo.test", "Ravi", "Chicago", "United States", "Fresh and fruity for work, oud for weekends.", false, "415 Lake Shore Dr, Chicago, IL 60611"],
-      ["m-noor", "noor@demo.test", "Noor", "Hoboken", "United States", "Skin scents and musks. Happy to send samples to new members.", false, "77 River St, Hoboken, NJ 07030"]
+      ["m-noor", "noor@demo.test", "Noor", "Hoboken", "United States", "Skin scents and musks. Happy to send samples to new members.", false, "77 River St, Hoboken, NJ 07030"],
+      ["m-elodie", "elodie@demo.test", "Élodie", "Montréal", "Canada", "Swapping in Canada! Florals and tea notes.", false, "12 Rue Saint-Denis, Montréal, QC H2X 3K8"]
     ];
     // Pretend ZIP codes (centre points from js/data/zips.csv). Noor in Hoboken is ~5 miles from Margaux in Brooklyn.
     db.locations = DEMO_LOCATIONS.map((l) => ({ ...l }));
     members.forEach(([id, email, display_name, city, country, bio, is_admin, address], i) => {
       db.users.push({ id, email, password: "demo1234" });
-      db.profiles.push({ id, display_name, city, country, bio, is_admin, is_banned: false, adult_confirmed_at: daysAgo(80 - i * 5), created_at: daysAgo(80 - i * 5) });
+      db.profiles.push({ id, display_name, city, country, country_code: country === "Canada" ? "CA" : "US", bio, is_admin, is_banned: false, adult_confirmed_at: daysAgo(80 - i * 5), created_at: daysAgo(80 - i * 5) });
       db.addresses.push({ user_id: id, full_name: display_name + " Demo", address });
     });
-    const item = (owner_id, perfume_id, size, volume_ml, fill_pct, tradeable, note = "") =>
-      db.items.push({ id: ++db.seq, owner_id, perfume_id, size, volume_ml, fill_pct, tradeable, photo_url: null, note, is_hidden: false, created_at: daysAgo(30) });
+    const item = (owner_id, perfume_id, size, volume_ml, fill_pct, tradeable, note = "", quantity = 1) =>
+      db.items.push({ id: ++db.seq, owner_id, perfume_id, size, volume_ml, fill_pct, quantity, tradeable, photo_url: null, note, is_hidden: false, created_at: daysAgo(30) });
     const wish = (user_id, perfume_id) => db.wishes.push({ id: ++db.seq, user_id, perfume_id, created_at: daysAgo(20) });
 
     item("m-margaux", P("Maison Francis Kurkdjian", "Baccarat Rouge 540", "Eau de Parfum"), "decant", 10, 90, true, "Decanted from my bottle, glass atomizer.");
@@ -74,7 +76,11 @@
     item("m-noor", P("Parfums de Marly", "Delina"), "full", 75, 65, true);
     item("m-noor", P("Byredo", "Mojave Ghost"), "decant", 10, 100, true);
     item("m-noor", P("Diptyque", "Do Son"), "sample", 2, 100, true);
-    item("m-noor", P("Le Labo", "Another 13"), "sample", 2, 100, true);
+    item("m-noor", P("Le Labo", "Another 13"), "sample", 2, 100, true, "", 4);
+
+    item("m-elodie", P("Byredo", "Gypsy Water"), "sample", 2, 50, true, "", 3);
+    item("m-elodie", P("Tom Ford", "Lost Cherry"), "decant", 5, 50, true);
+    wish("m-elodie", P("Le Labo", "Santal 33"));
     wish("m-noor", P("Tom Ford", "Black Orchid")); wish("m-noor", P("Maison Francis Kurkdjian", "Baccarat Rouge 540", "Eau de Parfum")); wish("m-noor", P("Guerlain", "Mon Guerlain"));
 
     // A little history so trust badges are not all empty.
@@ -91,6 +97,7 @@
     past("m-ravi", "m-margaux", P("Creed", "Silver Mountain Water"), P("Guerlain", "Vetiver"), 5, 5, "A true gentleman of the swap.", "Perfect swap.", 15);
 
     seedPerfumeReviews(db, P);
+    seedEvents(db);
 
     // Something for the admin page to show.
     db.perfumes.push({ id: ++db.seq, brand: "Tiny Indie Atelier", name: "Moss Letter", concentration: "Extrait de Parfum", year: 2025, status: "pending", requested_by: "m-june", created_at: daysAgo(2) });
@@ -98,6 +105,22 @@
     const s33 = P("Le Labo", "Santal 33");
     db.noteSuggestions.push({ id: ++db.seq, perfume_id: s33, suggested_by: "m-noor", family: "woody", notes_top: ["cardamom", "violet"], notes_heart: ["iris", "papyrus", "ambrox"], notes_base: ["sandalwood", "cedar", "leather"], comment: "(Demo) I think ambrox belongs in the heart too.", status: "pending", created_at: daysAgo(1) });
     return db;
+  }
+
+  // Two pretend community meetups (same rules as migration 017).
+  function seedEvents(db) {
+    db.events = []; db.eventAttendees = []; db.eventComments = []; db.countryRequests = db.countryRequests || [];
+    const inDays = (d, h) => { const t = new Date(Date.now() + d * 864e5); t.setHours(h, 0, 0, 0); return t.toISOString(); };
+    const ev = (organizer_id, country_code, title, description, city, place, starts_at, max_people, going) => {
+      const id = ++db.seq;
+      db.events.push({ id, organizer_id, country_code, title, description, city, place, starts_at, max_people, status: "active", is_hidden: false, created_at: daysAgo(3) });
+      [organizer_id, ...going].forEach((u) => db.eventAttendees.push({ event_id: id, user_id: u, created_at: daysAgo(2) }));
+      return id;
+    };
+    const e1 = ev("m-margaux", "US", "Sunday sniff & swap picnic", "Bring a few samples to share and some empty vials. I'll bring a funnel kit and blotter strips. Everyone welcome, beginners too!",
+      "Brooklyn, NY", "Prospect Park, by the Boathouse", inDays(9, 14), 15, ["m-noor"]);
+    db.eventComments.push({ id: ++db.seq, event_id: e1, user_id: "m-noor", body: "I'll bring Another 13 and some musks to try!", created_at: daysAgo(1) });
+    ev("m-elodie", "CA", "Café decant meetup", "Cozy afternoon: share decants, talk perfume.", "Montréal, QC", "Café Olimpico, Rue Saint-Viateur", inDays(12, 15), 8, []);
   }
 
   // Perfumer ("nose") names from js/catalog/perfumers.js, keyed "Brand|Name".
@@ -166,6 +189,12 @@
       try { seedPerfumeReviews(db, (b, n, c) => { const p = db.perfumes.find((x) => x.brand === b && x.name === n && (!c || x.concentration === c)); if (!p) throw new Error("missing"); return p.id; }); } catch (e) { /* demo members changed; skip samples */ }
     }
     db.profiles.forEach((p) => { if (p.adult_confirmed_at === undefined) { p.adult_confirmed_at = p.created_at; changed = true; } });
+    // Countries, quantities and meetups (migrations 016–017).
+    db.profiles.forEach((p) => { if (!p.country_code) { p.country_code = "US"; changed = true; } });
+    db.items.forEach((i) => { if (i.quantity === undefined) { i.quantity = 1; changed = true; } });
+    db.swapItems.forEach((x) => { if (x.quantity === undefined) { x.quantity = 1; changed = true; } });
+    if (!db.events) { seedEvents(db); changed = true; }
+    if (!db.countryRequests) { db.countryRequests = []; changed = true; }
     const have = new Set(db.perfumes.map((p) => Util.perfumeKey(p.brand, p.name, p.concentration)));
     window.CATALOG_SEED.forEach((row) => {
       if (have.has(Util.perfumeKey(row[0], row[1], row[2]))) return;
@@ -188,7 +217,8 @@
 
   const me = () => uid || fail("Please sign in first.");
   const prof = (id) => db.profiles.find((p) => p.id === id) || null;
-  const lite = (id) => { const p = prof(id); return p && { id: p.id, display_name: p.display_name, city: p.city, country: p.country, is_banned: p.is_banned, avatar_url: p.avatar_url || null }; };
+  const lite = (id) => { const p = prof(id); return p && { id: p.id, display_name: p.display_name, city: p.city, country: p.country, country_code: p.country_code || "US", is_banned: p.is_banned, avatar_url: p.avatar_url || null }; };
+  const ccOf = (id) => prof(id)?.country_code || "US";
   const perf = (id) => db.perfumes.find((p) => p.id === id) || null;
   // Duplicate catching — mirrors migration 015 (the live site does this in the database).
   const approvedBrands = () => [...new Set(db.perfumes.filter((p) => p.status === "approved").map((p) => p.brand))].sort((a, b) => a.localeCompare(b));
@@ -208,6 +238,7 @@
   // Same rules as migration 008: either side blocking hides listings/wishlists and stops swaps.
   // Unrounded distance in miles between me and another member, or null if either has no ZIP.
   const rawDistance = (other) => {
+    if (ccOf(uid) !== ccOf(other)) return null; // distances only inside one country (migration 016)
     const a = db.locations.find((x) => x.user_id === uid), b = db.locations.find((x) => x.user_id === other);
     return a && b ? Util.milesBetween(a, b) : null;
   };
@@ -221,6 +252,15 @@
   let resetFor = null; // demo stand-in for the emailed reset link
   const isAdmin = () => !!(uid && prof(uid) && prof(uid).is_admin);
   const adminOnly = () => isAdmin() || fail("Admins only.");
+  // Migration 016/017 rules: swaps only inside one country; quantities 0–99; meetups.
+  const sameCountry = (other) => { if (ccOf(uid) !== ccOf(other)) fail("Swaps are only between members in the same country — perfume can't be mailed across borders."); };
+  const qtyOk = (n) => { n = Math.round(Number(n)); if (!(n >= 0 && n <= 99)) fail("Choose an amount between 0 and 99."); return n; };
+  const checkQty = (ids, qty) => ids.forEach((id) => {
+    const q = Number(qty[id] || 1), i = db.items.find((x) => x.id === Number(id));
+    if (!(q >= 1 && q <= 99)) fail("Choose an amount between 1 and 99.");
+    if (!i || q > (i.quantity ?? 1)) fail("There aren't that many available of one of the perfumes.");
+  });
+  const canSeeEvent = (e) => !!uid && (e.organizer_id === uid || isAdmin() || (!prof(uid)?.is_banned && !e.is_hidden && !blockedWith(e.organizer_id)));
   const canSeeItem = (i) => i.owner_id === uid || ((!i.is_hidden || isAdmin()) && !blockedWith(i.owner_id));
   const withItem = (i) => ({ ...clone(i), perfume: clone(perf(i.perfume_id)), owner: lite(i.owner_id) });
   const withWish = (w) => ({ ...clone(w), perfume: clone(perf(w.perfume_id)), user: lite(w.user_id) });
@@ -241,7 +281,7 @@
     onAuthChange(f) { listeners.push(f); },
     currentUserId: () => uid,
 
-    async signUp({ email, password, display_name, birthdate }) {
+    async signUp({ email, password, display_name, birthdate, country_code = "US" }) {
       await tick();
       if (!birthdate) fail("Please enter your date of birth.");
       if (!isAdultBirthdate(birthdate)) fail("Sorry — you must be 18 or older to join Swapfume.");
@@ -251,7 +291,8 @@
       if (db.users.find((u) => u.email === email)) fail("That email already has an account. Try signing in.");
       const id = "u-" + Math.random().toString(36).slice(2, 10);
       db.users.push({ id, email, password });
-      db.profiles.push({ id, display_name: (String(display_name || "").trim() || email.split("@")[0]).slice(0, 40), city: "", country: "", bio: "", is_admin: false, is_banned: false, adult_confirmed_at: now(), created_at: now() });
+      const cc = Util.COUNTRIES.some((c) => c.code === country_code) ? country_code : "US";
+      db.profiles.push({ id, display_name: (String(display_name || "").trim() || email.split("@")[0]).slice(0, 40), city: "", country: Util.country(cc).name, country_code: cc, bio: "", is_admin: false, is_banned: false, adult_confirmed_at: now(), created_at: now() });
       save(); setUid(id);
       return { needsConfirmation: false };
     },
@@ -329,6 +370,10 @@
       db.addresses = db.addresses.filter((a) => a.user_id !== v);
       db.blocks = db.blocks.filter((b) => b.blocker_id !== v && b.blocked_id !== v);
       db.locations = db.locations.filter((x) => x.user_id !== v);
+      const theirEvents = new Set(db.events.filter((e) => e.organizer_id === v).map((e) => e.id));
+      db.events = db.events.filter((e) => !theirEvents.has(e.id));
+      db.eventAttendees = db.eventAttendees.filter((x) => x.user_id !== v && !theirEvents.has(x.event_id));
+      db.eventComments = db.eventComments.filter((x) => x.user_id !== v && !theirEvents.has(x.event_id));
       db.noteSuggestions = db.noteSuggestions.filter((n) => n.suggested_by !== v);
       db.photoSuggestions = db.photoSuggestions.filter((n) => n.suggested_by !== v || n.status === "approved");
       db.reports = db.reports.filter((r) => r.reporter_id !== v && r.target_user_id !== v);
@@ -405,9 +450,9 @@
     },
     async catalogBrands() { me(); return approvedBrands(); },
 
-    async listItems({ ownerId, tradeableOnly, perfumeIds, excludeOwnerId, limit = 200 } = {}) {
+    async listItems({ ownerId, tradeableOnly, perfumeIds, excludeOwnerId, country, limit = 200 } = {}) {
       me();
-      return db.items.filter((i) => canSeeItem(i)
+      return db.items.filter((i) => canSeeItem(i) && (!country || ccOf(i.owner_id) === country)
         && (!ownerId || i.owner_id === ownerId) && (!tradeableOnly || i.tradeable)
         && (!perfumeIds || perfumeIds.includes(i.perfume_id)) && (!excludeOwnerId || i.owner_id !== excludeOwnerId)
         && !(tradeableOnly && prof(i.owner_id)?.is_banned))
@@ -419,7 +464,7 @@
       if (!perf(Number(data.perfume_id))) fail("Pick a perfume from the catalog.");
       if (!["sample", "decant", "full"].includes(data.size)) fail("Pick a size.");
       const photo_url = photoFile ? (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl : null;
-      const i = { id: ++db.seq, owner_id: uid, perfume_id: Number(data.perfume_id), size: data.size, volume_ml: data.volume_ml ? Number(data.volume_ml) : null, fill_pct: Math.max(0, Math.min(100, Number(data.fill_pct ?? 100))), tradeable: !!data.tradeable, photo_url, note: String(data.note || "").slice(0, 300), is_hidden: false, created_at: now() };
+      const i = { id: ++db.seq, owner_id: uid, perfume_id: Number(data.perfume_id), size: data.size, volume_ml: data.volume_ml ? Number(data.volume_ml) : null, fill_pct: Math.max(0, Math.min(100, Number(data.fill_pct ?? 100))), quantity: qtyOk(data.quantity ?? 1), tradeable: !!data.tradeable && qtyOk(data.quantity ?? 1) > 0, photo_url, note: String(data.note || "").slice(0, 300), is_hidden: false, created_at: now() };
       db.items.push(i); save(); return withItem(i);
     },
     async updateItem(id, patch, photoFile) {
@@ -428,14 +473,16 @@
       if (patch.volume_ml !== undefined) i.volume_ml = patch.volume_ml ? Number(patch.volume_ml) : null;
       if (patch.fill_pct !== undefined) i.fill_pct = Math.max(0, Math.min(100, Number(patch.fill_pct)));
       if (patch.tradeable !== undefined) i.tradeable = !!patch.tradeable;
+      if (patch.quantity !== undefined) i.quantity = qtyOk(patch.quantity);
+      if (i.quantity === 0) i.tradeable = false; // none left = not open to trade (migration 017)
       if (photoFile) i.photo_url = (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl;
       save(); return withItem(i);
     },
     async deleteItem(id) { db.items = db.items.filter((x) => !(x.id === Number(id) && x.owner_id === me())); save(); },
 
-    async listWishes({ userId, perfumeIds, excludeUserId } = {}) {
+    async listWishes({ userId, perfumeIds, excludeUserId, country } = {}) {
       me();
-      return db.wishes.filter((w) => (w.user_id === uid || !blockedWith(w.user_id)) && (!userId || w.user_id === userId) && (!perfumeIds || perfumeIds.includes(w.perfume_id))
+      return db.wishes.filter((w) => (w.user_id === uid || !blockedWith(w.user_id)) && (!country || ccOf(w.user_id) === country) && (!userId || w.user_id === userId) && (!perfumeIds || perfumeIds.includes(w.perfume_id))
         && (!excludeUserId || w.user_id !== excludeUserId) && !(excludeUserId && prof(w.user_id)?.is_banned)).map(withWish);
     },
     async addWish(perfumeId) {
@@ -446,8 +493,9 @@
     },
     async removeWish(id) { db.wishes = db.wishes.filter((w) => !(w.id === Number(id) && w.user_id === me())); save(); },
 
-    async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail" }) {
+    async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail", qty = {} }) {
       active(); await tick();
+      sameCountry(recipientId);
       if (!["mail", "meetup"].includes(method)) fail("Choose mail or meeting in person.");
       if (recipientId === uid) fail("You cannot swap with yourself.");
       if (!prof(recipientId) || prof(recipientId).is_banned || blockedWith(recipientId)) fail("This member is not available for swaps.");
@@ -462,16 +510,18 @@
       if (!ok(myItemIds, uid)) fail("Some of your items are not available for trade.");
       if (!ok(theirItemIds, recipientId)) fail("Some of their items are no longer available.");
       const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, is_gift: false, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
+      checkQty([...myItemIds, ...theirItemIds], qty);
       db.swaps.push(s);
       [...myItemIds, ...theirItemIds].forEach((id) => {
         const i = db.items.find((x) => x.id === Number(id));
-        db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml });
+        db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml, quantity: Number(qty[id] || 1) });
       });
       save(); return s.id;
     },
     // Gifts: same rules as offer_gift() in migration 013.
-    async offerGift({ recipientId, myItemIds, message, method = "mail" }) {
+    async offerGift({ recipientId, myItemIds, message, method = "mail", qty = {} }) {
       active(); await tick();
+      sameCountry(recipientId);
       if (!["mail", "meetup"].includes(method)) fail("Choose mail or meeting in person.");
       if (recipientId === uid) fail("You cannot give a gift to yourself.");
       if (!prof(recipientId) || prof(recipientId).is_banned || blockedWith(recipientId)) fail("This member is not available.");
@@ -484,10 +534,11 @@
       if (db.swaps.filter((s) => s.proposer_id === uid && s.is_gift && s.status === "proposed").length >= 5) fail("You have 5 gift offers waiting for an answer. Wait for those first.");
       if (!myItemIds.every((id) => db.items.find((i) => i.id === Number(id) && i.owner_id === uid && i.tradeable && !i.is_hidden))) fail("Some of your items are not available.");
       const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, is_gift: true, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
+      checkQty(myItemIds, qty);
       db.swaps.push(s);
       myItemIds.forEach((id) => {
         const i = db.items.find((x) => x.id === Number(id));
-        db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml });
+        db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml, quantity: Number(qty[id] || 1) });
       });
       save(); return s.id;
     },
@@ -511,8 +562,8 @@
 
     // Location: ZIP code is private; others only get rounded distances (same rules as migration 011).
     async getMyLocation() { if (!uid) return null; const l = db.locations.find((x) => x.user_id === uid); return l ? { zip: l.zip } : null; },
-    async setMyLocation(zip) {
-      me(); const z = await Util.zipLookup(zip);
+    async setMyLocation(zip, cc) {
+      me(); const z = await Util.postalLookup(zip, cc || ccOf(uid));
       db.locations = db.locations.filter((x) => x.user_id !== uid);
       db.locations.push({ user_id: uid, zip: z.zip, lat: Math.round(z.lat * 100) / 100, lon: Math.round(z.lon * 100) / 100 }); save();
     },
@@ -543,6 +594,11 @@
       if (s.recipient_id !== uid) fail("Only the person who received this proposal can answer it.");
       if (s.status !== "proposed") fail("This proposal has already been answered.");
       if (accept) { active(); if (!s.proposer_id || blockedWith(s.proposer_id)) fail("This member is not available for swaps."); if (s.method !== "meetup" && !db.addresses.find((a) => a.user_id === uid)) fail("Add your shipping address in your profile before accepting."); }
+      if (accept) {
+        const parts = db.swapItems.filter((x) => x.swap_id === s.id && x.item_id);
+        parts.forEach((x) => { const i = db.items.find((y) => y.id === x.item_id); if (!i || i.quantity < (x.quantity || 1)) { const p = perf(x.perfume_id); fail(`Not enough left of ${p?.brand} ${p?.name}: it may have been swapped already.`); } });
+        parts.forEach((x) => { const i = db.items.find((y) => y.id === x.item_id); i.quantity -= x.quantity || 1; if (i.quantity <= 0) { i.quantity = 0; i.tradeable = false; } });
+      }
       s.status = accept ? "accepted" : "declined"; s.updated_at = now(); save();
     },
     async cancelSwap(id) {
@@ -852,6 +908,90 @@
     },
     async setItemHidden(id, hidden) { adminOnly(); const i = db.items.find((x) => x.id === Number(id)); if (i) { i.is_hidden = !!hidden; save(); } },
     async listMembers() { adminOnly(); return clone(db.profiles); },
+
+    // ---- Countries (migration 016) ----
+    async setMyCountry(code) {
+      me();
+      if (!Util.COUNTRIES.some((c) => c.code === code)) fail("Swapfume is open in " + Util.openCountriesText() + ".");
+      const p = prof(uid); if (p.country_code === code) return;
+      if (db.swaps.some((s) => [s.proposer_id, s.recipient_id].includes(uid) && ["proposed", "accepted"].includes(s.status))) fail("Finish or cancel your open swaps before changing country.");
+      p.country_code = code; p.country = Util.country(code).name;
+      db.locations = db.locations.filter((x) => x.user_id !== uid); save();
+    },
+    async requestCountry(email, country) {
+      await tick();
+      email = String(email || "").trim().toLowerCase(); country = String(country || "").trim().replace(/\s+/g, " ");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail("Please enter a valid email address.");
+      if (country.length < 2 || country.length > 60) fail("Please choose your country.");
+      if (!db.countryRequests.some((r) => r.email === email && r.country.toLowerCase() === country.toLowerCase()))
+        db.countryRequests.push({ id: ++db.seq, email, country, created_at: now() });
+      save();
+    },
+    async listCountryRequests() { adminOnly(); return clone(db.countryRequests).sort((a, b) => b.created_at.localeCompare(a.created_at)); },
+    async deleteCountryRequest(id) { adminOnly(); db.countryRequests = db.countryRequests.filter((r) => r.id !== Number(id)); save(); },
+
+    // ---- Community meetups (migration 017) ----
+    async listEvents({ country, past = false } = {}) {
+      me();
+      const cut = new Date(Date.now() - 6 * 3600e3).toISOString();
+      return db.events.filter((e) => canSeeEvent(e) && (!country || e.country_code === country) && (past ? e.starts_at < cut : e.starts_at >= cut))
+        .sort((a, b) => (past ? -1 : 1) * a.starts_at.localeCompare(b.starts_at))
+        .map((e) => ({ ...clone(e), organizer: lite(e.organizer_id), attendees: db.eventAttendees.filter((x) => x.event_id === e.id).map((x) => ({ user_id: x.user_id })) }));
+    },
+    async getEvent(id) {
+      me(); const e = db.events.find((x) => x.id === Number(id));
+      if (!e || !canSeeEvent(e)) return null;
+      return { ...clone(e), organizer: lite(e.organizer_id),
+        attendees: db.eventAttendees.filter((x) => x.event_id === e.id).map((x) => ({ ...clone(x), user: lite(x.user_id) })),
+        comments: db.eventComments.filter((c) => c.event_id === e.id && !blockedWith(c.user_id)).map((c) => ({ ...clone(c), user: lite(c.user_id) })) };
+    },
+    async saveEvent(id, d) {
+      active(); await tick();
+      const t = new Date(d.starts_at);
+      if (isNaN(t) || t < new Date()) fail("Pick a date and time in the future.");
+      if (t > new Date(Date.now() + 366 * 864e5)) fail("Pick a date within the next year.");
+      const title = String(d.title || "").trim(), city = String(d.city || "").trim(), place = String(d.place || "").trim();
+      if (title.length < 3) fail("Give your meetup a title."); if (city.length < 2) fail("Add the city."); if (place.length < 3) fail("Add the public place where you'll meet.");
+      const max = d.max_people ? Number(d.max_people) : null;
+      if (max != null && (max < 2 || max > 500)) fail("Maximum people must be between 2 and 500.");
+      const row = { title: title.slice(0, 100), description: String(d.description || "").trim().slice(0, 2000), city: city.slice(0, 80), place: place.slice(0, 200), starts_at: t.toISOString(), max_people: max };
+      if (id) {
+        const e = db.events.find((x) => x.id === Number(id) && x.organizer_id === uid && x.status === "active") || fail("Only the organizer can edit this event.");
+        Object.assign(e, row); save(); return e.id;
+      }
+      if (db.events.filter((e) => e.organizer_id === uid && e.status === "active" && e.starts_at > now()).length >= 5) fail("You already have 5 upcoming events.");
+      const e = { id: ++db.seq, organizer_id: uid, country_code: ccOf(uid), status: "active", is_hidden: false, created_at: now(), ...row };
+      db.events.push(e); db.eventAttendees.push({ event_id: e.id, user_id: uid, created_at: now() }); save(); return e.id;
+    },
+    async cancelEvent(id) {
+      const e = db.events.find((x) => x.id === Number(id) && x.organizer_id === me() && x.status === "active") || fail("Only the organizer can cancel this event.");
+      e.status = "cancelled"; save();
+    },
+    async joinEvent(id, going) {
+      active(); const e = db.events.find((x) => x.id === Number(id));
+      if (!e || !canSeeEvent(e)) fail("Event not found.");
+      const mine = (x) => x.event_id === e.id && x.user_id === uid;
+      if (!going) { if (e.organizer_id === uid) fail("You are the organizer. Cancel the event instead."); db.eventAttendees = db.eventAttendees.filter((x) => !mine(x)); save(); return; }
+      if (e.status !== "active" || e.starts_at < now()) fail("This event is no longer open.");
+      if (e.country_code !== ccOf(uid)) fail("This event is in another country.");
+      const n = db.eventAttendees.filter((x) => x.event_id === e.id).length;
+      if (db.eventAttendees.some(mine)) return;
+      if (e.max_people && n >= e.max_people) fail("This event is full.");
+      db.eventAttendees.push({ event_id: e.id, user_id: uid, created_at: now() }); save();
+    },
+    async commentEvent(id, body) {
+      active(); const e = db.events.find((x) => x.id === Number(id));
+      if (!e || !canSeeEvent(e)) fail("Event not found.");
+      body = String(body || "").trim(); if (!body) fail("Write something first.");
+      db.eventComments.push({ id: ++db.seq, event_id: e.id, user_id: uid, body: body.slice(0, 600), created_at: now() }); save();
+    },
+    async deleteEventComment(id) {
+      const c = db.eventComments.find((x) => x.id === Number(id)); if (!c) return;
+      const e = db.events.find((x) => x.id === c.event_id);
+      if (c.user_id !== me() && e?.organizer_id !== uid && !isAdmin()) fail("You can only remove your own comments.");
+      db.eventComments = db.eventComments.filter((x) => x !== c); save();
+    },
+    async setEventHidden(id, hidden) { adminOnly(); const e = db.events.find((x) => x.id === Number(id)); if (e) { e.is_hidden = !!hidden; save(); } },
 
     // Demo-only helpers (the "Demo tools" panel)
     demoUsers: () => db.profiles.map((p) => ({ id: p.id, display_name: p.display_name, email: db.users.find((u) => u.id === p.id)?.email, is_admin: p.is_admin })),

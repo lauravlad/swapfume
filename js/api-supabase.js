@@ -25,7 +25,7 @@
     // Where email links (confirm sign-up, reset password) should land: this page on the web,
     // the public website when running inside the iPhone app.
     const siteUrl = () => (window.Capacitor?.isNativePlatform?.() && window.APP_CONFIG.PUBLIC_SITE_URL) || location.origin + location.pathname;
-    const LITE = "id,display_name,city,country,is_banned,avatar_url";
+    const LITE = "id,display_name,city,country,country_code,is_banned,avatar_url";
     const ITEM_SEL = `*, perfume:perfumes(*), owner:profiles(${LITE})`;
     const WISH_SEL = `*, perfume:perfumes(*), user:profiles(${LITE})`;
     const SWAP_SEL = "*, proposer:profiles!swaps_proposer_id_fkey(*), recipient:profiles!swaps_recipient_id_fkey(*), items:swap_items(*, perfume:perfumes(*))";
@@ -53,12 +53,12 @@
       onAuthChange(f) { listeners.push(f); },
       currentUserId: () => uid,
 
-      async signUp({ email, password, display_name, birthdate }) {
+      async signUp({ email, password, display_name, birthdate, country_code = "US" }) {
         if (!birthdate) fail("Please enter your date of birth.");
         if (String(password || "").length < 8) fail("Use at least 8 characters for your password.");
         const data = check(await sb.auth.signUp({
           email: String(email).trim(), password,
-          options: { data: { display_name: String(display_name || "").trim(), birthdate },  emailRedirectTo: siteUrl() }
+          options: { data: { display_name: String(display_name || "").trim(), birthdate, country_code },  emailRedirectTo: siteUrl() }
         }));
         return { needsConfirmation: !data.session };
       },
@@ -145,8 +145,10 @@
       async perfumeLookup(brand, name) { return check(await sb.rpc("perfume_lookup", { p_brand: brand, p_name: name })); },
       async catalogBrands() { return check(await sb.rpc("catalog_brands")) || []; },
 
-      async listItems({ ownerId, tradeableOnly, perfumeIds, excludeOwnerId, limit = 200 } = {}) {
-        let q = sb.from("collection_items").select(ITEM_SEL);
+      // country: only listings by members of that country (matches, browse — swaps stay inside one country).
+      async listItems({ ownerId, tradeableOnly, perfumeIds, excludeOwnerId, country, limit = 200 } = {}) {
+        let q = sb.from("collection_items").select(country ? ITEM_SEL.replace("owner:profiles(", "owner:profiles!inner(") : ITEM_SEL);
+        if (country) q = q.eq("owner.country_code", country);
         if (ownerId) q = q.eq("owner_id", ownerId);
         if (tradeableOnly) q = q.eq("tradeable", true);
         if (perfumeIds) { if (!perfumeIds.length) return []; q = q.in("perfume_id", perfumeIds); }
@@ -157,7 +159,7 @@
       async getItem(id) { return check(await sb.from("collection_items").select(ITEM_SEL).eq("id", id).maybeSingle()); },
       async addItem(data, photoFile) {
         const photo_url = photoFile ? await uploadPhoto(photoFile) : null;
-        const row = { owner_id: me(), perfume_id: Number(data.perfume_id), size: data.size, volume_ml: data.volume_ml ? Number(data.volume_ml) : null, fill_pct: Number(data.fill_pct ?? 100), tradeable: !!data.tradeable, note: String(data.note || ""), photo_url };
+        const row = { owner_id: me(), perfume_id: Number(data.perfume_id), size: data.size, volume_ml: data.volume_ml ? Number(data.volume_ml) : null, fill_pct: Number(data.fill_pct ?? 100), quantity: Number(data.quantity ?? 1), tradeable: !!data.tradeable, note: String(data.note || ""), photo_url };
         return check(await sb.from("collection_items").insert(row).select(ITEM_SEL).single());
       },
       async updateItem(id, patch, photoFile) {
@@ -165,13 +167,15 @@
         ["size", "note", "tradeable"].forEach((k) => { if (patch[k] !== undefined) row[k] = patch[k]; });
         if (patch.volume_ml !== undefined) row.volume_ml = patch.volume_ml ? Number(patch.volume_ml) : null;
         if (patch.fill_pct !== undefined) row.fill_pct = Number(patch.fill_pct);
+        if (patch.quantity !== undefined) row.quantity = Number(patch.quantity);
         if (photoFile) row.photo_url = await uploadPhoto(photoFile);
         return check(await sb.from("collection_items").update(row).eq("id", id).select(ITEM_SEL).single());
       },
       async deleteItem(id) { check(await sb.from("collection_items").delete().eq("id", id)); },
 
-      async listWishes({ userId, perfumeIds, excludeUserId } = {}) {
-        let q = sb.from("wishlist_items").select(WISH_SEL);
+      async listWishes({ userId, perfumeIds, excludeUserId, country } = {}) {
+        let q = sb.from("wishlist_items").select(country ? WISH_SEL.replace("user:profiles(", "user:profiles!inner(") : WISH_SEL);
+        if (country) q = q.eq("user.country_code", country);
         if (userId) q = q.eq("user_id", userId);
         if (perfumeIds) { if (!perfumeIds.length) return []; q = q.in("perfume_id", perfumeIds); }
         if (excludeUserId) q = q.neq("user_id", excludeUserId);
@@ -181,19 +185,21 @@
       async addWish(perfumeId) { check(await sb.from("wishlist_items").insert({ user_id: me(), perfume_id: Number(perfumeId) })); },
       async removeWish(id) { check(await sb.from("wishlist_items").delete().eq("id", id)); },
 
-      async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail" }) {
-        return check(await sb.rpc("propose_swap", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_their_items: theirItemIds.map(Number), p_message: message || "", p_method: method }));
+      // qty: { itemId: how many } — several vials of one listing. Missing = 1.
+      async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail", qty = {} }) {
+        return check(await sb.rpc("propose_swap_qty", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_their_items: theirItemIds.map(Number), p_message: message || "", p_method: method,
+          p_my_qty: myItemIds.map((i) => Number(qty[i] || 1)), p_their_qty: theirItemIds.map((i) => Number(qty[i] || 1)) }));
       },
-      async offerGift({ recipientId, myItemIds, message, method = "mail" }) {
-        return check(await sb.rpc("offer_gift", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_message: message || "", p_method: method }));
+      async offerGift({ recipientId, myItemIds, message, method = "mail", qty = {} }) {
+        return check(await sb.rpc("offer_gift_qty", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_message: message || "", p_method: method, p_my_qty: myItemIds.map((i) => Number(qty[i] || 1)) }));
       },
       async setMeetPlan(id, plan) { check(await sb.rpc("set_meet_plan", { p_swap: Number(id), p_plan: plan || "" })); },
       async markMet(id) { check(await sb.rpc("mark_met", { p_swap: Number(id) })); },
 
       // Location: ZIP code is private; others only get rounded distances.
       async getMyLocation() { if (!uid) return null; return check(await sb.from("private_locations").select("zip").eq("user_id", uid).maybeSingle()); },
-      async setMyLocation(zip) {
-        const z = await Util.zipLookup(zip);
+      async setMyLocation(zip, cc = "US") {
+        const z = await Util.postalLookup(zip, cc);
         check(await sb.rpc("set_my_location", { p_zip: z.zip, p_lat: z.lat, p_lon: z.lon }));
       },
       async clearMyLocation() { check(await sb.rpc("clear_my_location")); },
@@ -336,7 +342,41 @@
       async resolveReport(id) { check(await sb.from("reports").update({ status: "resolved" }).eq("id", id)); },
       async setBan(userId, banned) { check(await sb.rpc("admin_set_ban", { p_user: userId, p_banned: !!banned })); },
       async setItemHidden(id, hidden) { check(await sb.rpc("admin_set_item_hidden", { p_item: Number(id), p_hidden: !!hidden })); },
-      async listMembers() { return check(await sb.from("profiles").select("*").order("created_at", { ascending: false })); }
+      async listMembers() { return check(await sb.from("profiles").select("*").order("created_at", { ascending: false })); },
+
+      // ---- Countries ----
+      async setMyCountry(code) { check(await sb.rpc("set_my_country", { p_code: code })); },
+      // "Bring Swapfume to my country" — anyone, signed in or not.
+      async requestCountry(email, country) { check(await sb.rpc("request_country", { p_email: String(email || "").trim(), p_country: String(country || "").trim() })); },
+      async listCountryRequests() { return check(await sb.from("country_requests").select("*").order("created_at", { ascending: false })); },
+      async deleteCountryRequest(id) { check(await sb.from("country_requests").delete().eq("id", id)); },
+
+      // ---- Community meetups ----
+      async listEvents({ country, past = false } = {}) {
+        let q = sb.from("events").select(`*, organizer:profiles!events_organizer_id_fkey(${LITE}), attendees:event_attendees(user_id)`);
+        if (country) q = q.eq("country_code", country);
+        const now = new Date(Date.now() - 6 * 3600e3).toISOString();
+        q = past ? q.lt("starts_at", now).order("starts_at", { ascending: false }).limit(30) : q.gte("starts_at", now).order("starts_at");
+        return check(await q);
+      },
+      async getEvent(id) {
+        const e = check(await sb.from("events").select(`*, organizer:profiles!events_organizer_id_fkey(${LITE})`).eq("id", id).maybeSingle());
+        if (!e) return null;
+        const [att, com] = await Promise.all([
+          sb.from("event_attendees").select(`user_id, created_at, user:profiles!event_attendees_user_id_fkey(${LITE})`).eq("event_id", id).order("created_at"),
+          sb.from("event_comments").select(`*, user:profiles!event_comments_user_id_fkey(${LITE})`).eq("event_id", id).order("created_at")]);
+        e.attendees = check(att); e.comments = check(com);
+        return e;
+      },
+      async saveEvent(id, d) {
+        return check(await sb.rpc("save_event", { p_id: id ? Number(id) : null, p_title: d.title, p_description: d.description || "", p_city: d.city, p_place: d.place,
+          p_starts_at: new Date(d.starts_at).toISOString(), p_max_people: d.max_people ? Number(d.max_people) : null }));
+      },
+      async cancelEvent(id) { check(await sb.rpc("cancel_event", { p_id: Number(id) })); },
+      async joinEvent(id, going) { check(await sb.rpc("join_event", { p_id: Number(id), p_going: !!going })); },
+      async commentEvent(id, body) { check(await sb.rpc("comment_event", { p_id: Number(id), p_body: body })); },
+      async deleteEventComment(id) { check(await sb.from("event_comments").delete().eq("id", id)); },
+      async setEventHidden(id, hidden) { check(await sb.rpc("admin_set_event_hidden", { p_id: Number(id), p_hidden: !!hidden })); }
     };
   };
 })();
