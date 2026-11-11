@@ -151,7 +151,7 @@
       async identifyPerfumes(file) {
         me();
         const { dataUrl } = await Util.resizeImage(file, 1568, 0.85);
-        const { data, error } = await sb.functions.invoke("identify-perfumes", { method: "POST", body: { image: dataUrl, media_type: "image/jpeg" } });
+        const { data, error } = await sb.functions.invoke(window.APP_CONFIG.AI_PHOTO_FUNCTION || "identify-perfumes", { method: "POST", body: { image: dataUrl, media_type: "image/jpeg" } });
         if (error) {
           let msg = "";
           try { msg = (await error.context.json()).error; } catch (e) { /* not JSON */ }
