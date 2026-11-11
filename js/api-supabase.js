@@ -147,6 +147,15 @@
           : query.order("brand").order("name");
         return check(await query.limit(limit));
       },
+      // Every approved perfume (id, brand, name, concentration) for "Paste your list" matching. Loaded in pages of 1000.
+      async catalogIndex() {
+        const out = [];
+        for (let from = 0; from < 20000; from += 1000) {
+          const rows = check(await sb.from("perfumes").select("id,brand,name,concentration").eq("status", "approved").order("id").range(from, from + 999));
+          out.push(...rows); if (rows.length < 1000) break;
+        }
+        return out;
+      },
       async getPerfume(id) { return check(await sb.from("perfumes").select("*").eq("id", id).maybeSingle()); },
       async requestPerfume({ brand, name, concentration, year }) {
         return check(await sb.rpc("request_perfume", { p_brand: brand, p_name: name, p_concentration: concentration || "", p_year: year ? Number(year) : null }));

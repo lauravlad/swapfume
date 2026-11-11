@@ -260,7 +260,10 @@
     let chosen = existing?.perfume || presetPerfume || null;
     // Samples and decants usually get used a few times, so a new one starts half full; a full bottle starts at 100%.
     const defaultFill = (size) => (size === "full" ? 100 : 50);
-    const it = existing || { size: "decant", volume_ml: "", fill_pct: defaultFill("decant"), tradeable: true, note: "" };
+    // Adding several in a row: the form remembers the last size, amount and "open to trade".
+    let last = {}; try { last = JSON.parse(sessionStorage.getItem("swapfume_last_add") || "{}"); } catch (e) { /* ignore */ }
+    const startSize = ["sample", "decant", "full"].includes(last.size) ? last.size : "decant";
+    const it = existing || { size: startSize, volume_ml: last.volume_ml || "", fill_pct: defaultFill(startSize), quantity: last.quantity || 1, tradeable: last.tradeable ?? true, note: "" };
     openModal(html`<form class="dlg" id="itemForm">
       <h3>${existing ? "Edit this listing" : "Add to your collection"}</h3>
       <div class="field"><label>Perfume</label><div id="pickHost"></div></div>
@@ -278,7 +281,7 @@
       <div class="field"><label for="note">Note <span class="muted">(optional)</span></label><input id="note" name="note" type="text" maxlength="300" value="${it.note}" placeholder="Batch, box, how it was stored…"></div>
       <div class="dlg-actions">
         ${existing ? html`<button type="button" class="btn danger" id="delItem" style="margin-right:auto">Remove</button>` : ""}
-        <button type="button" class="btn secondary" data-close>Cancel</button><button class="btn" id="saveItem">Save</button></div>
+        <button type="button" class="btn secondary" data-close>Cancel</button>${existing ? "" : html`<button class="btn secondary" id="saveMore" value="more">Save &amp; add another</button>`}<button class="btn" id="saveItem">Save</button></div>
     </form>`, (m) => {
       const host = $("#pickHost", m);
       const drawPick = () => {
@@ -303,9 +306,17 @@
         if (!(quantity >= 0 && quantity <= 99)) { toast("How many: choose a number from 0 to 99.", "error"); return; }
         const data = { perfume_id: chosen.id, size: f.get("size"), volume_ml: f.get("volume_ml"), fill_pct: f.get("fill_pct"), quantity, tradeable: !!f.get("tradeable") && quantity > 0, note: f.get("note").trim() };
         const photo = f.get("photo") && f.get("photo").size ? f.get("photo") : null;
-        run($("#saveItem", m), async () => {
-          if (existing) await api.updateItem(existing.id, data, photo); else await api.addItem(data, photo);
-          modal.close(); toast(existing ? "Saved." : "Added to your collection."); route();
+        const more = e.submitter?.id === "saveMore";
+        run(more ? $("#saveMore", m) : $("#saveItem", m), async () => {
+          if (existing) await api.updateItem(existing.id, data, photo);
+          else {
+            await api.addItem(data, photo);
+            try { sessionStorage.setItem("swapfume_last_add", JSON.stringify({ size: data.size, quantity: data.quantity || 1, tradeable: data.tradeable, volume_ml: data.volume_ml || "" })); } catch (err) { /* ignore */ }
+          }
+          modal.close();
+          toast(existing ? "Saved." : more ? `Added ${chosen.name}. Next one!` : "Added to your collection.");
+          await route();
+          if (more) itemForm(null);
         });
       });
       const del = $("#delItem", m);
@@ -1088,7 +1099,7 @@
     if (tab === "have") {
       const openItems = items.filter((i) => i.tradeable && !i.is_hidden);
       body.innerHTML = val(html`<div class="row between" style="margin-bottom:14px"><p class="small" style="margin:0">${availableText(items) ? html`<b>Available to swap:</b> ${availableText(items)}` : html`<span class="muted">Nothing open to trade yet</span>`}</p>
-          <div class="row" style="gap:8px"><button class="btn" id="addItem">Add a perfume</button></div></div>
+          <div class="row" style="gap:8px"><button class="btn" id="addItem">Add a perfume</button><a class="btn secondary" href="#/collection/import">Paste a list</a></div></div>
         ${openItems.length ? html`<div class="share-row"><span class="muted small">Share what you're trading:</span>${Object.entries(NETWORKS).map(([k, n]) => html`<button class="btn small secondary net-btn" data-share="${k}">${n.icon}<span>${n.label}</span></button>`)}</div>` : ""}
         ${items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { mine: true }))}</div>` : html`<div class="empty"><h3>Your shelf is empty</h3><p>Add the samples, decants and bottles you own. Mark the ones you'd trade.</p></div>`}`);
       $("#addItem").addEventListener("click", () => itemForm(null));
@@ -1282,10 +1293,9 @@
           <datalist id="brandList">${brands.map((b) => html`<option value="${b}"></option>`)}</datalist></div>
         <div><label for="rn">Perfume name</label><input id="rn" type="text" required maxlength="120" autocomplete="off" value="${params.get("name") || ""}"></div></div>
         <div id="similar" class="field" aria-live="polite"></div>
-        <div class="two field"><div><label for="rc">Concentration</label><select id="rc">${CONCS.map((c) => html`<option>${c}</option>`)}</select></div>
-        <div><label for="ry">Release year</label><input id="ry" type="number" min="1700" max="2100" inputmode="numeric" required></div></div>
+        <div class="field"><label for="rc">Concentration</label><select id="rc">${CONCS.map((c) => html`<option>${c}</option>`)}</select></div>
         <p class="hint" id="tidy"></p>
-        <p class="hint">The catalog covers perfumes from 2000 onward, plus true classics from before 2000 that are still sold today.</p>
+        <p class="hint">An admin checks the details (like the release year) before it's added to the catalog.</p>
         <div class="field"><button class="btn" id="reqBtn">Send suggestion</button></div>
       </form>`);
     let last = null, seq = 0, timer = null;
@@ -1313,7 +1323,7 @@
         const conc = $("#rc").value === "Other / not sure" ? "" : $("#rc").value;
         const close = await api.perfumeLookup($("#rb").value, $("#rn").value).then((r) => (r.similar || []).filter((x) => x.score >= 0.75)).catch(() => []);
         if (close.length && !(await confirmBox("Already in the catalog?", `It looks a lot like ${close.slice(0, 3).map((x) => `${x.brand} ${x.name}${x.concentration ? ` (${x.concentration})` : ""}`).join(", ")}. Send yours anyway?`, "Yes, it's different"))) return;
-        const r = await api.requestPerfume({ brand: $("#rb").value, name: $("#rn").value, concentration: conc, year: $("#ry").value });
+        const r = await api.requestPerfume({ brand: $("#rb").value, name: $("#rn").value, concentration: conc, year: null });
         if (r.result === "exists") { toast("That one is already in the catalog."); go(`/perfume/${r.id}`); }
         else if (r.result === "already_requested") { toast("Someone already suggested it — it's waiting for approval."); }
         else { toast("Thanks! It will appear once an admin approves it."); go("/collection"); }
@@ -2028,12 +2038,90 @@
   function swapsTabs(active) {
     return html`<div class="tabs" role="tablist" style="margin-bottom:8px"><a role="tab" class="tablink" href="#/swaps" aria-selected="${active === "swaps"}">Swaps</a><a role="tab" class="tablink" href="#/messages" aria-selected="${active === "messages"}">Messages<span class="dot" data-msgdot hidden></span></a></div>`;
   }
+
+  // ---------- "Paste your list": add many perfumes at once ----------
+  async function pageImport() {
+    setView(html`<a href="#/collection" class="btn ghost small">&larr; My collection</a>
+      <div class="page-head" style="margin-top:8px"><h1>Add your list</h1><p>Paste your perfumes — one per line, any order. Add the size or amount if you like: <i>"YSL Libre EDP 10ml decant"</i>, <i>"Santal 33 sample x2"</i>, <i>"Aventus"</i>.</p></div>
+      <div class="card">
+        <label for="impText">Your list</label>
+        <textarea id="impText" rows="9" placeholder="Baccarat Rouge 540 sample&#10;Le Labo Santal 33 10ml decant&#10;Delina PDM full bottle&#10;…"></textarea>
+        <div class="row" style="margin-top:10px"><button class="btn" id="impGo">Find my perfumes</button>
+          <label class="btn secondary">Upload a file (.txt or .csv)<input type="file" id="impFile" accept=".txt,.csv,text/plain,text/csv" class="visually-hidden"></label></div>
+        <details class="small" style="margin-top:12px"><summary><b>Your list is on Fragrantica?</b></summary>
+          <p>Fragrantica doesn't offer a download, but copying works: open your collection there (<b>“I have”</b>), select the list of perfumes on the page, copy it (<b>Cmd+C</b> / <b>Ctrl+C</b>), and paste it above. Extra words are fine — Swapfume picks out the perfume names, and you check every match before anything is added.</p></details>
+      </div>
+      <div id="impOut"></div>`);
+    let catalog = null, matcher = null;
+    let mine = new Map();
+    const ensure = async () => {
+      if (!matcher) { catalog = await api.catalogIndex(); matcher = Util.catalogMatcher(catalog); }
+      mine = new Map((await api.listItems({ ownerId: state.uid })).map((i) => [i.perfume_id, i]));
+    };
+    let last = {}; try { last = JSON.parse(sessionStorage.getItem("swapfume_last_add") || "{}"); } catch (e) { /* ignore */ }
+    const defSize = ["sample", "decant", "full"].includes(last.size) ? last.size : "sample";
+    const review = (lines) => {
+      const rows = lines.map(Util.parseListLine).filter(Boolean).slice(0, 200).map((l) => ({ l, cands: matcher(l) }));
+      const found = rows.filter((r) => r.cands.length && r.cands[0].score >= 0.8).length;
+      // Possible duplicates: the same perfume twice in the list, or one you already have.
+      const firstLine = new Map();
+      rows.forEach((r, k) => {
+        const pid = r.cands[0]?.p.id; if (!pid) return;
+        if (firstLine.has(pid)) r.dupOf = firstLine.get(pid) + 1; else firstLine.set(pid, k);
+        if (mine.has(pid)) r.have = mine.get(pid);
+      });
+      $("#impOut").innerHTML = val(rows.length ? html`<div class="card"><h3>Check your matches</h3>
+        <p class="small muted">${found} of ${rows.length} matched for sure. Check the others, change anything that's wrong, or untick a line to skip it.</p>
+        <label class="switch small"><input type="checkbox" id="impTrade" ${last.tradeable === false ? "" : raw("checked")}> Mark all as open to swap or gift</label>
+        <ul class="list imp-list">${rows.map((r, k) => {
+          const sure = r.cands.length && r.cands[0].score >= 0.8, size = r.l.size || defSize;
+          return html`<li class="imp-row ${sure ? "sure" : r.cands.length ? "maybe" : "none"}" data-k="${k}">
+            <label class="imp-use"><input type="checkbox" data-use ${r.cands.length && !r.dupOf && !r.have ? raw("checked") : r.cands.length ? "" : raw("disabled")}><span class="small muted">“${r.l.raw}”</span></label>
+            ${r.dupOf ? html`<p class="hint dup-hint" style="margin:0">Possible duplicate: same perfume as line ${r.dupOf}. Unticked — tick it if it's a second one.</p>` : ""}
+            ${r.have ? html`<p class="hint dup-hint" style="margin:0">Already in your collection (${SIZE_LABEL[r.have.size].toLowerCase()}). Unticked — tick it to add another listing.</p>` : ""}
+            ${r.cands.length ? html`<div class="imp-fields">
+                <select data-pick aria-label="Perfume for line ${k + 1}">${r.cands.map((c, j) => html`<option value="${c.p.id}" ${j === 0 ? raw("selected") : ""}>${c.p.brand} — ${c.p.name} (${c.p.concentration})${!sure && j === 0 ? " ?" : ""}</option>`)}</select>
+                <select data-size aria-label="Size">${["sample", "decant", "full"].map((s) => html`<option value="${s}" ${s === size ? raw("selected") : ""}>${SIZE_LABEL[s]}</option>`)}</select>
+                <input data-qty type="number" min="1" max="99" value="${r.l.quantity}" aria-label="How many" title="How many">
+                <input data-vol type="number" min="0.5" max="1000" step="0.5" value="${r.l.volume_ml ?? ""}" placeholder="ml" aria-label="Volume in ml"></div>
+                ${sure ? "" : html`<p class="hint" style="margin:4px 0 0">Not sure — is this the right one? Pick another from the list, or untick to skip.</p>`}`
+              : html`<p class="hint" style="margin:4px 0 0">Not in the catalog yet. <a href="#/request?name=${encodeURIComponent(r.l.text)}" target="_blank" rel="noopener">Suggest it</a> — then add it once it's approved.</p>`}
+          </li>`;
+        })}</ul>
+        <div class="row" style="margin-top:12px"><button class="btn" id="impAdd">Add to my collection</button><span class="small muted" id="impCount"></span></div></div>`
+        : html`<div class="empty"><p>Nothing to look up — paste at least one perfume.</p></div>`);
+      const count = () => { const n = $$("#impOut [data-use]:checked").length; $("#impCount").textContent = `${n} perfume${n === 1 ? "" : "s"} selected`; $("#impAdd").disabled = !n; };
+      if (!rows.length) return;
+      $$("#impOut [data-use]").forEach((c) => c.addEventListener("change", count)); count();
+      $("#impAdd").addEventListener("click", () => run($("#impAdd"), async () => {
+        const trade = $("#impTrade").checked;
+        const picks = $$("#impOut .imp-row").filter((li) => $("[data-use]", li)?.checked).map((li) => {
+          const size = $("[data-size]", li).value, qty = Math.max(1, Math.min(99, Math.round(Number($("[data-qty]", li).value) || 1)));
+          return { perfume_id: Number($("[data-pick]", li).value), size, quantity: qty, volume_ml: $("[data-vol]", li).value || null, fill_pct: size === "full" ? 100 : 50, tradeable: trade, note: "" };
+        });
+        let added = 0;
+        for (const d of picks) { await api.addItem(d, null); added++; $("#impAdd").textContent = `Adding… ${added}/${picks.length}`; }
+        try { sessionStorage.setItem("swapfume_last_add", JSON.stringify({ size: picks[picks.length - 1]?.size, quantity: 1, tradeable: trade })); } catch (e) { /* ignore */ }
+        toast(`Added ${added} perfume${added === 1 ? "" : "s"} to your collection. 💐`); go("/collection");
+      }));
+    };
+    const runIt = (text) => run($("#impGo"), async () => { await ensure(); review(String(text || "").split(/\r?\n/)); $("#impOut").scrollIntoView({ behavior: "smooth", block: "start" }); });
+    $("#impGo").addEventListener("click", () => runIt($("#impText").value));
+    $("#impFile").addEventListener("change", (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      if (f.size > 500000) { toast("That file is too big. Try a shorter list.", "error"); return; }
+      const r = new FileReader();
+      r.onload = () => { $("#impText").value = String(r.result || ""); runIt(r.result); };
+      r.readAsText(f);
+    });
+  }
   // ---------- Router ----------
   const routes = [
     [/^\/$/, pageHome, "home"],
     [/^\/browse$/, pageBrowse, "browse"],
     [/^\/catalog$/, pageCatalog, "browse"],
     [/^\/collection$/, pageCollection, "collection"],
+    [/^\/collection\/import$/, pageImport, "collection"],
     [/^\/perfume\/(\d+)$/, pagePerfume, "browse"],
     [/^\/request$/, pageRequest, "collection"],
     [/^\/u\/([\w-]+)$/, pageUser, ""],

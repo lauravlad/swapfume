@@ -92,6 +92,46 @@
     return p.length >= 4 && q.length >= 4 && !num.test(p) && !num.test(q) && similarity(p, q) >= 0.3;
   }
 
+  // ---- "Paste your list": match free-typed lines to catalog perfumes ----
+  // One line per perfume, any order: "YSL Libre EDP 10ml decant", "Santal 33 sample x2", "1. Aventus".
+  const SIZE_WORDS = [["sample", /\b(samples?|vials?|minis?|testers?|carded)\b/i], ["decant", /\b(decants?|atomi[sz]ers?|travel ?sprays?|splits?)\b/i], ["full", /\b(full|bottles?|fb|flacons?)\b/i]];
+  const CONC_WORDS = [["Eau de Parfum", /\b(edp|eau de parfum)\b/i], ["Eau de Toilette", /\b(edt|eau de toilette)\b/i], ["Eau de Cologne", /\b(edc|eau de cologne|cologne)\b/i],
+    ["Extrait de Parfum", /\b(extrait( de parfum)?)\b/i], ["Parfum", /\bparfum\b/i]];
+  function parseListLine(raw) {
+    let t = String(raw || "").replace(/^\s*(?:[-–•*·]+|\d{1,3}[.)])\s*/, "").replace(/\s+/g, " ").trim();
+    if (!t) return null;
+    const out = { raw: String(raw).trim(), size: null, volume_ml: null, quantity: 1, concentration: null };
+    const vol = t.match(/(\d+(?:[.,]\d+)?)\s*ml\b/i);
+    if (vol) { out.volume_ml = Number(vol[1].replace(",", ".")); t = t.replace(vol[0], " "); }
+    const q = t.match(/(?:^|\s)(?:x\s?(\d{1,2})|(\d{1,2})\s?x)(?=\s|$)/i);
+    if (q) { out.quantity = Math.max(1, Math.min(99, Number(q[1] || q[2]))); t = t.replace(q[0], " "); }
+    for (const [size, re] of SIZE_WORDS) if (re.test(t)) { out.size = out.size || size; t = t.replace(new RegExp(re.source, "gi"), " "); }
+    for (const [c, re] of CONC_WORDS) if (re.test(t)) { out.concentration = out.concentration || c; t = t.replace(new RegExp(re.source, "gi"), " "); }
+    // Brand nicknames ("YSL", "MFK", "PDM"…) become the full brand name.
+    for (const [a, b] of BRAND_ALIASES) { const re = new RegExp("(^|\\s)" + a.replace(/[.*+?^${}()|[\]\\&]/g, "\\$&") + "(?=\\s|$)", "i"); if (re.test(t)) { t = t.replace(re, "$1" + b); break; } }
+    out.text = t.replace(/[,;|]+/g, " ").replace(/\s+/g, " ").trim();
+    return out.text ? out : null;
+  }
+  function catalogMatcher(perfumes) {
+    const idx = perfumes.map((p) => {
+      const key = normWords(p.brand + " " + p.name), name = normWords(p.name), brand = normWords(p.brand);
+      return { p, key, name, brandWords: brand.split(" ").filter((w) => w.length > 1), kt: trigrams(key), nt: trigrams(name) };
+    });
+    const sim = (A, B) => { if (!A.size || !B.size) return 0; let n = 0; A.forEach((g) => { if (B.has(g)) n++; }); return n / (A.size + B.size - n); };
+    const contained = (A, B) => { if (!A.size) return 0; let n = 0; A.forEach((g) => { if (B.has(g)) n++; }); return n / A.size; };
+    return function match(line) {
+      const L = normWords(line.text), LT = trigrams(L), words = new Set(L.split(" "));
+      const scored = idx.map((e) => {
+        const brandIn = e.brandWords.length && e.brandWords.every((w) => words.has(w));
+        const nameIn = contained(e.nt, LT);                       // how much of the perfume's name appears in the line
+        let score = Math.max(sim(LT, e.kt), nameIn * (brandIn ? 1 : 0.88) * (0.72 + 0.28 * sim(LT, e.nt)));
+        const rank = score + (line.concentration && e.p.concentration === line.concentration ? 0.04 : 0) + (!line.concentration && e.p.concentration === "Eau de Parfum" ? 0.01 : 0);
+        return { p: e.p, score: Math.min(1, score), rank };
+      }).filter((x) => x.score >= 0.5).sort((a, b) => b.rank - a.rank || a.p.name.length - b.p.name.length);
+      return scored.slice(0, 5);
+    };
+  }
+
   // Shrink a photo before saving it (keeps uploads small and fast).
   function resizeImage(file, maxSide = 900, quality = 0.82) {
     return new Promise((resolve, reject) => {
@@ -170,5 +210,5 @@
   // Same rounding as member_distances(): nearest mile up to 20, nearest 5 up to 50, nothing beyond.
   const roundMiles = (d) => (d > 50 ? null : d <= 20 ? Math.max(1, Math.round(d)) : Math.round(d / 5) * 5);
 
-  window.Util = { normText, brandNameKey, perfumeKey, normWords, brandKey, canonicalBrand, tidyPerfumeName, similarity, wordSimilarity, oneWordTypo, resizeImage, zipLookup, postalLookup, COUNTRIES, country, openCountriesText, milesBetween, roundMiles };
+  window.Util = { normText, brandNameKey, perfumeKey, normWords, brandKey, canonicalBrand, tidyPerfumeName, similarity, wordSimilarity, oneWordTypo, resizeImage, parseListLine, catalogMatcher, zipLookup, postalLookup, COUNTRIES, country, openCountriesText, milesBetween, roundMiles };
 })();

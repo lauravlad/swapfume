@@ -429,6 +429,7 @@
         && terms.every((t) => Util.normText(p.brand + " " + p.name + " " + (p.perfumers || []).join(" ")).includes(t)))
         .sort(sort === "rating" ? byRating : byName).slice(0, limit));
     },
+    async catalogIndex() { me(); return db.perfumes.filter((p) => p.status === "approved").map(({ id, brand, name, concentration }) => ({ id, brand, name, concentration })); },
     async getPerfume(id) {
       const p = perf(Number(id));
       return p && (p.status === "approved" || p.requested_by === uid || isAdmin()) ? clone(p) : null;
