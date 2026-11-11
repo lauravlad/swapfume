@@ -779,7 +779,7 @@
   const me = () => state.profile?.display_name || "me";
   function postTitle(items, kind = "shelf") {
     return kind === "wishlist" ? `[${myCC()}] ISO / looking for: ${items.slice(0, 3).map((i) => pTitle(i.perfume)).join(", ")}${items.length > 3 ? " and more" : ""} (swap only, no money)`
-      : `[${myCC()}] Swap shelf: ${items.length} perfume${items.length === 1 ? "" : "s"} open for trade (no money, perfume for perfume)`;
+      : `[${myCC()}] Swap shelf: ${items.length} perfume${items.length === 1 ? "" : "s"} to swap or gift (no money)`;
   }
   // A wishlist post: "I'm looking for these — have one to swap?"
   function wishText(wishes, net = "facebook") {
@@ -797,7 +797,7 @@
     const more = wishes.length > 15 ? wishes.length - 15 : 0;
     if (net === "reddit") {
       // Reddit uses Markdown: "- " for bullets, ** for bold. Plain and factual reads best there.
-      const lines = ["Hi all! I'm swapping perfume for perfume (no money). Here's what I have open for trade:", "", ...items.map((i) => "- " + postLine(i).replace(" · ", " — "))];
+      const lines = ["Hi all! I'm swapping or gifting perfume (never for money). Here's what I have:", "", ...items.map((i) => "- " + postLine(i).replace(" · ", " — "))];
       if (wishList.length) lines.push("", "**On my wishlist:**", "", ...wishList.map((w) => "- " + pTitle(w.perfume)), ...(more ? [`- …and ${more} more`] : []));
       lines.push("", `In ${myCountry().the}. I'm “${me()}” on Swapfume (${SITE_URL}), a free swap community, or just comment / DM me here.`);
       return lines.join("\n");
@@ -805,15 +805,15 @@
     if (net === "instagram") {
       // Links aren't clickable in Instagram captions, so the site is written out; hashtags help people find it.
       const fams = [...new Set(items.map((i) => FAMILY_TAG[i.perfume?.family]).filter(Boolean))].slice(0, 4);
-      const lines = ["My scent wardrobe is open for swapping ✨", "Perfume for perfume, never money.", "", ...items.map((i) => "🌸 " + postLine(i))];
+      const lines = ["My scent wardrobe is open for swapping or gifting ✨", "Swap or gift, never money.", "", ...items.map((i) => "🌸 " + postLine(i))];
       if (wishList.length) lines.push("", "Dreaming of:", ...wishList.map((w) => "💭 " + pTitle(w.perfume)), ...(more ? [`…and ${more} more`] : []));
       lines.push("", `Swap with me on Swapfume, I'm “${me()}” 💌 swapfume.com`, "",
         ["#perfumeswap", "#fragranceswap", "#perfumecommunity", "#fragrancecommunity", "#perfumecollection", "#scentoftheday", "#swapfume", ...fams.map((t) => "#" + t)].join(" "));
       return lines.join("\n");
     }
-    const lines = ["✨ My scent wardrobe is open for swapping ✨", "Perfume for perfume, never money. Here's what's waiting for a new home:", "", ...items.map((i) => "🌸 " + postLine(i))];
+    const lines = ["✨ My scent wardrobe is open for swapping or gifting ✨", "Swap or gift, never money. Here's what's waiting for a new home:", "", ...items.map((i) => "🌸 " + postLine(i))];
     if (wishList.length) lines.push("", "On my wishlist, in case you have one to spare:", ...wishList.map((w) => "💭 " + pTitle(w.perfume)), ...(more ? [`…and ${more} more`] : []));
-    lines.push("", `Fancy a swap? Find me on Swapfume as “${me()}” 💌 ${SITE_URL}`);
+    lines.push("", `Fancy a swap or a gift? Find me on Swapfume as “${me()}” 💌 ${SITE_URL}`);
     return lines.join("\n");
   }
 
@@ -951,7 +951,7 @@
     g.strokeStyle = S.gold; g.lineWidth = 1.6; g.beginPath(); g.moveTo(PAD, fy); g.lineTo(PAD + 120, fy); g.stroke();
     g.fillStyle = S.gold; g.save(); g.translate(PAD + 136, fy); g.rotate(Math.PI / 4); g.fillRect(-5, -5, 10, 10); g.restore();
     g.beginPath(); g.moveTo(PAD + 152, fy); g.lineTo(PAD + 272, fy); g.stroke();
-    g.fillStyle = S.muted; g.font = `italic 500 34px ${serif}`; g.fillText(kind === "wishlist" ? "looking to swap for" : "open for swapping", PAD + 300, fy + 10);
+    g.fillStyle = S.muted; g.font = `italic 500 34px ${serif}`; g.fillText(kind === "wishlist" ? "looking to swap for" : "to swap or gift", PAD + 300, fy + 10);
 
     // The list
     const fit = (text, max) => { if (g.measureText(text).width <= max) return text; while (text.length > 1 && g.measureText(text + "…").width > max) text = text.slice(0, -1); return text.trimEnd() + "…"; };
