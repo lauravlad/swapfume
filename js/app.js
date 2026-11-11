@@ -172,6 +172,7 @@
         ${mine ? html`<div class="row" style="margin-top:4px">${i.quantity === 0 ? html`<span class="pill grey">None left</span>` : i.tradeable ? html`<span class="pill ok">Open to trade</span>` : html`<span class="pill grey">Keeping</span>`}${i.is_hidden ? html`<span class="pill warn">Hidden by admin</span>` : ""}</div>
           <div class="actions"><button class="btn small secondary" data-edit="${i.id}">Edit</button><button class="btn small ghost" data-toggle="${i.id}">${i.tradeable ? "Keep instead" : "Offer to trade"}</button></div>
           ${p?.status === "approved" ? html`<a class="review-link small" href="#/perfume/${p.id}?review=1"><span aria-hidden="true">★</span> Write a review</a>` : ""}` : ""}
+        ${owner && i.owner && i.owner.id !== state.uid ? html`<button type="button" class="btn small ghost ask-btn" data-ask="${i.id}">${CHAT_ICON}<span>Ask a question</span></button>` : ""}
         ${owner && i.owner ? html`<div class="owner">from <a href="#/u/${i.owner.id}">${i.owner.display_name}</a>${place(i.owner) ? html` <span class="muted">· ${i.owner.city || i.owner.country}</span>` : ""}</div>` : ""}
       </div>`;
     // Several of one listing ("4 vials"): pick how many to include.
@@ -312,10 +313,10 @@
     });
   }
 
-  function reportDialog({ targetUserId, targetItemId, targetPerfumeReviewId, what }) {
+  function reportDialog({ targetUserId, targetItemId, targetPerfumeReviewId, what, prefill = "" }) {
     openModal(html`<form class="dlg" id="repForm"><h3>Report ${what}</h3>
       <p class="muted small">Reports go privately to the admins. The person is not told who reported them.</p>
-      <label for="reason">What happened?</label><textarea id="reason" required minlength="3" maxlength="1000" placeholder="e.g. Never shipped, fake bottle, rude messages…"></textarea>
+      <label for="reason">What happened?</label><textarea id="reason" required minlength="3" maxlength="1000" placeholder="e.g. Never shipped, fake bottle, rude messages…">${prefill}</textarea>
       <div class="dlg-actions"><button type="button" class="btn secondary" data-close>Cancel</button><button class="btn" id="repSend">Send report</button></div></form>`,
     (m) => $("#repForm", m).addEventListener("submit", (e) => {
       e.preventDefault();
@@ -406,9 +407,10 @@
   async function refreshSwapDot() {
     if (!state.uid) return;
     try {
-      const [swaps, reviewed] = await Promise.all([api.listMySwaps(), myReviewedSet()]);
+      const [swaps, reviewed, unread] = await Promise.all([api.listMySwaps(), myReviewedSet(), api.unreadThreads().catch(() => 0)]);
       const n = swaps.filter((s) => swapInfo(s, reviewed.has(s.id)).needsMe).length;
-      $$("[data-swapdot]").forEach((d) => (d.hidden = !n));
+      $$("[data-swapdot]").forEach((d) => (d.hidden = !(n || unread)));
+      $$("[data-msgdot]").forEach((d) => (d.hidden = !unread));
     } catch (e) { /* not critical */ }
   }
 
@@ -1490,7 +1492,7 @@
         <div class="small muted ellipsis">${info.gift ? html`${GIFT_ICON} Gift ${info.iAmP ? "to them" : "for you"}: ${(info.iAmP ? info.give : info.get).map((x) => x.perfume?.name).join(", ")}` : html`Get ${info.get.map((x) => x.perfume?.name).join(", ")} · give ${info.give.map((x) => x.perfume?.name).join(", ")}`}</div></div>
         <span class="pill ${info.tone}">${info.label}</span></a></li>`;
     const section = (title, list) => list.length ? html`<h2>${title}</h2><ul class="list card">${list.map(row)}</ul>` : "";
-    setView(html`<div class="page-head"><h1>My swaps</h1><p>Proposals, packages on the way, and swaps waiting for a review.</p></div>
+    setView(html`${swapsTabs("swaps")}<div class="page-head"><h1>My swaps</h1><p>Proposals, packages on the way, and swaps waiting for a review.</p></div>
       ${swaps.length ? html`${section("Needs you", needs)}${section("In progress", going)}${section("Past", past)}`
         : html`<div class="empty"><h3>No swaps yet</h3><p>Find someone in your matches and propose a swap.</p><a class="btn" href="#/">See my matches</a></div>`}`);
   }
@@ -1576,8 +1578,10 @@
             <button class="btn" id="revBtn">Post review</button></form>`}
           ${theirReview ? html`<hr class="soft"><div class="small muted">${on}'s review of you</div><p><span class="stars">${starsText(theirReview.rating)}</span> ${theirReview.comment}</p>` : ""}
           <p class="hint">Tip: update your collection — mark what you gave away, add what you received.</p></div>` : ""}
+        ${o ? html`<div class="card"><h3>${CHAT_ICON} Messages with ${on}</h3><div id="swapChat"><div class="spinner"></div></div></div>` : ""}
         <div><button class="btn ghost small" id="repSwap">Report a problem with this swap</button></div>
       </div>`);
+    if (o && $("#swapChat")) api.swapThread(s.id).then((tid) => mountChat($("#swapChat"), tid)).catch((e) => { const h = $("#swapChat"); if (h) h.innerHTML = val(html`<p class="muted small">${e.message}</p>`); });
     const bind = (sel, fn) => { const b = $(sel); if (b) b.addEventListener("click", () => run(b, fn)); };
     bind("#accept", async () => { await api.respondSwap(s.id, true); toast(meet ? "Accepted! Now agree where and when to meet." : gift ? `Accepted! ${on} can now ship it to you.` : "Accepted! You can now see their address."); route(); refreshSwapDot(); });
     bind("#met", async () => { if (await confirmBox("Did you meet up and swap?", "Confirm only after you've exchanged the perfumes. When you've both confirmed, the swap is complete and you can review each other.", "Yes, we swapped")) { await api.markMet(s.id); toast("Lovely — enjoy your new scents!"); route(); refreshSwapDot(); } });
@@ -1951,6 +1955,79 @@
     });
   }
 
+
+  // ---------- Messages (migration 020) ----------
+  // Only between the two people in a swap or gift, or about a listing ("Ask a question"). Never addresses or money.
+  const CHAT_ICON = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`);
+  const fmtTime = (d) => new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const looksPrivate = (t) => /[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(t) || /(\+?\d[\d\s().-]{8,}\d)/.test(t) || /\b(venmo|paypal|zelle|cash ?app|revolut)\b/i.test(t);
+  function chatHtml(t) {
+    const other = t.user_a === state.uid ? t.b : t.a;
+    const on = other?.display_name || "Former member";
+    return html`<div class="chat" data-thread="${t.id}">
+      <div class="chat-list" id="chatList" aria-live="polite">${t.messages.length ? t.messages.map((m) => {
+        const mine = m.sender_id === state.uid;
+        return html`<div class="msg ${mine ? "me" : "them"}"><div class="bubble">${m.body}</div><div class="msg-meta">${mine ? "You" : on} · ${fmtTime(m.created_at)}${!mine && m.sender_id ? html` · <button type="button" class="linklike" data-repmsg="${m.id}">Report</button>` : ""}</div></div>`;
+      }) : html`<p class="muted small" style="margin:0">No messages yet. Say hi! 👋</p>`}</div>
+      <form class="chat-form" id="chatForm"><label for="chatIn" class="visually-hidden">Message to ${on}</label>
+        <textarea id="chatIn" rows="2" maxlength="1000" placeholder="Write to ${on}…" required></textarea>
+        <button class="btn" id="chatSend">Send</button></form>
+      <p class="hint" id="chatWarn" hidden>Keep it on Swapfume: don't share emails, phone numbers or payment apps. Swapfume never involves money.</p>
+    </div>`;
+  }
+  function bindChat(t, refresh) {
+    const other = t.user_a === state.uid ? t.b : t.a, on = other?.display_name || "Former member";
+    const list = $("#chatList"); if (list) list.scrollTop = list.scrollHeight;
+    const inp = $("#chatIn"), warn = $("#chatWarn");
+    if (inp) inp.addEventListener("input", () => { warn.hidden = !looksPrivate(inp.value); });
+    if (inp) inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("#chatForm").requestSubmit(); });
+    const f = $("#chatForm");
+    if (f) f.addEventListener("submit", (e) => { e.preventDefault(); run($("#chatSend"), async () => { await api.sendMessage(t.id, inp.value); await refresh(); }); });
+    $$("[data-repmsg]").forEach((b) => b.addEventListener("click", () => {
+      const m = t.messages.find((x) => String(x.id) === b.dataset.repmsg);
+      reportDialog({ targetUserId: other?.id, what: `a message from ${on}`, prefill: `Message: “${(m?.body || "").slice(0, 600)}”\n\nWhat's wrong: ` });
+    }));
+    if (t.messages.some((m) => m.sender_id !== state.uid)) api.markThreadRead(t.id).then(refreshSwapDot).catch(() => {});
+  }
+  // A chat inside a card, kept fresh while it's on screen.
+  async function mountChat(host, threadId) {
+    const draw = async () => {
+      const t = await api.getThread(threadId);
+      if (!t || !host.isConnected) return;
+      const typing = $("#chatIn")?.value || "";
+      host.innerHTML = val(chatHtml(t)); bindChat(t, draw);
+      if (typing) $("#chatIn").value = typing;
+    };
+    await draw();
+    const timer = setInterval(() => { if (!host.isConnected) clearInterval(timer); else if (!document.hidden && document.activeElement?.id !== "chatIn") draw().catch(() => {}); }, 20000);
+  }
+
+  async function pageChat(id) {
+    const t = await api.getThread(id);
+    if (!t) return setView(html`<div class="empty"><h3>Conversation not found</h3><a class="btn secondary" href="#/messages">All messages</a></div>`);
+    const other = t.user_a === state.uid ? t.b : t.a;
+    setView(html`<a href="#/messages" class="btn ghost small">&larr; All messages</a>
+      <div class="page-head" style="margin-top:8px"><div class="row" style="gap:10px;align-items:center">${avatar(other)}<h1 style="margin:0">${other ? html`<a href="#/u/${other.id}" style="color:inherit">${other.display_name}</a>` : "Former member"}</h1></div>
+        <p class="muted">${t.kind === "swap" ? html`About your ${t.swap?.is_gift ? "gift" : "swap"} · <a href="#/swap/${t.swap_id}">Open it</a>` : t.perfume ? html`About their <a href="#/perfume/${t.perfume.id}">${pTitle(t.perfume)}</a>` : "About a listing"}</p></div>
+      <div class="card" id="chatHost"></div>`);
+    await mountChat($("#chatHost"), t.id);
+  }
+
+  async function pageMessages() {
+    const ts = await api.listThreads();
+    setView(html`${swapsTabs("messages")}
+      <div class="page-head"><h1>Messages</h1><p>Your conversations about swaps, gifts and listings.</p></div>
+      ${ts.length ? html`<ul class="list card">${ts.map((t) => {
+        const other = t.user_a === state.uid ? t.b : t.a;
+        const about = t.kind === "swap" ? (t.swap?.is_gift ? "Gift" : "Swap") : t.perfume ? pTitle(t.perfume) : "Listing";
+        return html`<li><a class="swap-row" href="#/chat/${t.id}">${avatar(other)}<div class="grow"><div class="title">${other?.display_name || "Former member"} <span class="small muted">· ${about}</span></div>
+          <div class="small muted ellipsis">${t.last ? (t.last.sender_id === state.uid ? "You: " : "") + t.last.body : ""}</div></div>
+          ${t.unread ? html`<span class="pill rose">New</span>` : html`<span class="small muted">${t.last ? fmtDate(t.last.created_at) : ""}</span>`}</a></li>`;
+      })}</ul>` : html`<div class="empty"><h3>No messages yet</h3><p>Message someone from a swap or gift, or tap <b>Ask a question</b> on a listing.</p></div>`}`);
+  }
+  function swapsTabs(active) {
+    return html`<div class="tabs" role="tablist" style="margin-bottom:8px"><a role="tab" class="tablink" href="#/swaps" aria-selected="${active === "swaps"}">Swaps</a><a role="tab" class="tablink" href="#/messages" aria-selected="${active === "messages"}">Messages<span class="dot" data-msgdot hidden></span></a></div>`;
+  }
   // ---------- Router ----------
   const routes = [
     [/^\/$/, pageHome, "home"],
@@ -1964,6 +2041,8 @@
     [/^\/gift\/([\w-]+)$/, (id) => pagePropose(id, null, true), "home"],
     [/^\/swaps$/, pageSwaps, "swaps"],
     [/^\/swap\/(\d+)$/, pageSwap, "swaps"],
+    [/^\/messages$/, pageMessages, "swaps"],
+    [/^\/chat\/(\d+)$/, pageChat, "swaps"],
     [/^\/me$/, pageMe, "me"],
     [/^\/meetups$/, pageMeetups, "meetups"],
     [/^\/meetup\/new$/, () => pageMeetupForm(null), "meetups"],
@@ -2028,6 +2107,11 @@
   }
 
   window.addEventListener("hashchange", route);
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ask]"); if (!b) return;
+    e.preventDefault();
+    run(b, async () => { const tid = await api.itemThread(b.dataset.ask); go(`/chat/${tid}`); });
+  });
   bootLog("data layer ready, checking sign-in");
   // App Store badge in the footer (website only).
   const footBadge = appStoreBadge("foot-badge");

@@ -173,6 +173,7 @@ parts.push(['countries', head('016 Canada and Romania; same-country swaps; count
 parts.push(['quantity_events', head('017 how many you have; community meetups', 'Same as supabase/migrations/017_quantity_events.sql.') + mig('017_quantity_events.sql')]);
 parts.push(['private_members', head('018 nobody but admins can count the members', 'Same as supabase/migrations/018_private_members.sql.') + mig('018_private_members.sql')]);
 parts.push(['gift_labels', head('019 prepaid shipping labels for gifts', 'Same as supabase/migrations/019_gift_labels.sql.') + mig('019_gift_labels.sql')]);
+parts.push(['messages', head('020 messages in swaps and about listings', 'Same as supabase/migrations/020_messages.sql.') + mig('020_messages.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);

@@ -556,3 +556,18 @@ fieldset.field legend { font-weight: 600; margin-bottom: 4px; }
 
 #askCountry { margin-top: 4px; }
 #askCountry .ico-inline, .ask-country h3 .ico-inline { width: 18px; height: 18px; vertical-align: -3px; }
+
+/* ---- Messages ---- */
+.chat-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; padding: 4px 2px 8px; }
+.msg { display: flex; flex-direction: column; max-width: 85%; }
+.msg.me { align-self: flex-end; align-items: flex-end; }
+.msg.them { align-self: flex-start; align-items: flex-start; }
+.msg .bubble { padding: 9px 13px; border-radius: 16px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+.msg.me .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
+.msg.them .bubble { background: var(--surface-2, #F3ECE6); color: var(--ink); border-bottom-left-radius: 5px; }
+.msg-meta { font-size: .72rem; color: var(--muted); margin-top: 3px; }
+.chat-form { display: flex; gap: 8px; align-items: flex-end; margin-top: 10px; }
+.chat-form textarea { flex: 1; min-height: 46px; resize: vertical; }
+.ask-btn { margin-top: 6px; align-self: flex-start; }
+.ask-btn .ico-inline { width: 15px; height: 15px; vertical-align: -2px; margin-right: 4px; }
+.tablink .dot { position: relative; display: inline-block; top: -6px; margin-left: 3px; }

@@ -223,6 +223,32 @@
         if (error) fail("Couldn't open the label. Please try again.");
         return data.signedUrl;
       },
+      // ---- Messages (migration 020): only between the two people in a swap, or about a listing ----
+      async swapThread(swapId) { return check(await sb.rpc("swap_thread", { p_swap: Number(swapId) })); },
+      async itemThread(itemId) { return check(await sb.rpc("item_thread", { p_item: Number(itemId) })); },
+      async sendMessage(threadId, body) { return check(await sb.rpc("send_message", { p_thread: Number(threadId), p_body: String(body || "") })); },
+      async markThreadRead(threadId) { check(await sb.rpc("mark_thread_read", { p_thread: Number(threadId) })); },
+      async unreadThreads() { if (!uid) return 0; return check(await sb.rpc("unread_threads")) || 0; },
+      async getThread(id) {
+        const t = check(await sb.from("threads").select(`*, a:profiles!threads_user_a_fkey(${LITE}), b:profiles!threads_user_b_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration), swap:swaps(id,is_gift,status)`).eq("id", id).maybeSingle());
+        if (!t) return null;
+        t.messages = check(await sb.from("messages").select("*").eq("thread_id", id).order("created_at").limit(500));
+        return t;
+      },
+      async listThreads() {
+        me();
+        const ts = check(await sb.from("threads").select(`*, a:profiles!threads_user_a_fkey(${LITE}), b:profiles!threads_user_b_fkey(${LITE}), perfume:perfumes(id,brand,name), swap:swaps(id,is_gift,status)`)
+          .not("last_message_at", "is", null).order("last_message_at", { ascending: false }).limit(100));
+        if (!ts.length) return [];
+        const ids = ts.map((t) => t.id);
+        const [msgs, reads] = await Promise.all([
+          sb.from("messages").select("thread_id,sender_id,body,created_at").in("thread_id", ids).order("created_at", { ascending: false }).limit(500),
+          sb.from("thread_reads").select("thread_id,last_read_at").eq("user_id", uid).in("thread_id", ids)]);
+        const last = {}, readAt = {};
+        check(msgs).forEach((m) => { if (!last[m.thread_id]) last[m.thread_id] = m; });
+        check(reads).forEach((r) => { readAt[r.thread_id] = r.last_read_at; });
+        return ts.map((t) => { const l = last[t.id]; return { ...t, last: l || null, unread: !!(l && l.sender_id !== uid && (!readAt[t.id] || l.created_at > readAt[t.id])) }; });
+      },
       async setMeetPlan(id, plan) { check(await sb.rpc("set_meet_plan", { p_swap: Number(id), p_plan: plan || "" })); },
       async markMet(id) { check(await sb.rpc("mark_met", { p_swap: Number(id) })); },
 

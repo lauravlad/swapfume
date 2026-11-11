@@ -25,6 +25,7 @@
   <li><b>Your public profile:</b> display name, the country you swap in (${COUNTRIES.replace("the ", "")}), and if you add them, city and a short bio.</li>
   <li><b>Your shipping address:</b> the name and address you enter for packages.</li>
   <li><b>Your postal code</b> (ZIP code in the US), if you add it, and its approximate centre point, used only to work out roughly how far you are from other members. In Canada we keep only the first 3 characters. Centre points come from public lists: the US Census Bureau and GeoNames (geonames.org, CC BY 4.0).</li>
+  <li><b>Messages</b> you send another member about a swap, a gift or a listing.</li>
   <li><b>Community meetups:</b> meetups you organize (title, date, city, public meeting place, description), whether you said you're going, and comments you post on them.</li>
   <li><b>"Bring ${APP} to my country":</b> if you ask for your country, your email address and the country you named.</li>
   <li><b>What you list and write:</b> your collection, wishlist, profile photo and other photos you upload, swaps (including meet-up plans you write), swap reviews, perfume reviews and ratings, "Helpful" votes, catalog suggestions, reports and blocks.</li>
@@ -37,6 +38,7 @@
   <li><b>Other members</b> can see your public profile, what you mark as open to trade, your wishlist, your completed-swap count, reviews, and the perfume reviews you write (with your display name). Who voted "Helpful" is not shown.</li>
   <li><b>Your address</b> is shown only to the other person in a swap by mail, and only after you have <i>both</i> accepted it. It is never shared for swaps where you meet in person. For a <b>gift</b> by mail, only the person giving sees the receiver's address — never the other way round.</li>
   <li><b>Meetups</b> you organize, the list of who's going, and meetup comments are visible to signed-in members, with display names.</li>
+  <li><b>Messages</b> are seen only by you and the one member you're writing to. Our admins read a message only if one of you reports it (the report quotes it).</li>
   <li><b>Your postal code</b> is never shown to anyone. Other members in your country see only your city (if you add one), a rounded distance such as "about 8 miles" or "about 12 km" (only up to 50 miles / 80 km away), and a small map of your general area on your profile. That map is centred on a point we blur by several miles and has no pin, so it shows the area, never your exact location. People you've blocked, or who blocked you, see none of this.</li>
   <li><b>Photos</b> you upload are stored at a public web address so they can be displayed; anyone with the link could view them. Don't include personal details in photos.</li>
   <li><b>Our admins</b> can see what's needed to moderate: listings, reports, swaps and member accounts.</li>
@@ -129,7 +131,7 @@
 </ul>
 
 <h2>Be kind and keep it clean</h2>
-<p>No offensive content: no harassment, hate, threats, sexual content, or anything illegal, in your profile, photos, notes, reviews or messages. Don't share other people's personal details. Reviews must be honest and about a real swap.</p>
+<p>No offensive content: no harassment, hate, threats, sexual content, or anything illegal, in your profile, photos, notes, reviews or messages. Messages are for swaps, gifts and questions about listings — no spam, no selling, and don't ask for or share payment details. Don't share other people's personal details. Reviews must be honest and about a real swap.</p>
 
 <h2>Your content</h2>
 <p>You keep ownership of the photos and text you post. You give ${OP} permission to store and show them in ${APP} so the service works. Only upload photos you took yourself or have the right to use.</p>

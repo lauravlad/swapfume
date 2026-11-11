@@ -98,6 +98,7 @@
 
     seedPerfumeReviews(db, P);
     seedEvents(db);
+    db.threads = []; db.messages = []; db.threadReads = [];
 
     // Something for the admin page to show.
     db.perfumes.push({ id: ++db.seq, brand: "Tiny Indie Atelier", name: "Moss Letter", concentration: "Extrait de Parfum", year: 2025, status: "pending", requested_by: "m-june", created_at: daysAgo(2) });
@@ -195,6 +196,7 @@
     db.swapItems.forEach((x) => { if (x.quantity === undefined) { x.quantity = 1; changed = true; } });
     if (!db.events) { seedEvents(db); changed = true; }
     if (!db.countryRequests) { db.countryRequests = []; changed = true; }
+    if (!db.threads) { db.threads = []; db.messages = []; db.threadReads = []; changed = true; }
     const have = new Set(db.perfumes.map((p) => Util.perfumeKey(p.brand, p.name, p.concentration)));
     window.CATALOG_SEED.forEach((row) => {
       if (have.has(Util.perfumeKey(row[0], row[1], row[2]))) return;
@@ -260,6 +262,8 @@
     if (!(q >= 1 && q <= 99)) fail("Choose an amount between 1 and 99.");
     if (!i || q > (i.quantity ?? 1)) fail("There aren't that many available of one of the perfumes.");
   });
+  const myThread = (id) => db.threads.find((x) => x.id === Number(id) && [x.user_a, x.user_b].includes(uid)) || fail("Conversation not found.");
+  const setRead = (threadId) => { const r = db.threadReads.find((x) => x.thread_id === threadId && x.user_id === uid); if (r) r.last_read_at = now(); else db.threadReads.push({ thread_id: threadId, user_id: uid, last_read_at: now() }); };
   const canSeeEvent = (e) => !!uid && (e.organizer_id === uid || isAdmin() || (!prof(uid)?.is_banned && !e.is_hidden && !blockedWith(e.organizer_id)));
   const canSeeItem = (i) => i.owner_id === uid || ((!i.is_hidden || isAdmin()) && !blockedWith(i.owner_id));
   const withItem = (i) => ({ ...clone(i), perfume: clone(perf(i.perfume_id)), owner: lite(i.owner_id) });
@@ -564,6 +568,53 @@
       s.label_path = null; save();
     },
     async giftLabelUrl(path) { return path; },
+    // ---- Messages (same rules as migration 020) ----
+    async swapThread(swapId) {
+      const s = mySwap(swapId);
+      if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
+      let t = db.threads.find((x) => x.swap_id === s.id);
+      if (!t) { t = { id: ++db.seq, kind: "swap", swap_id: s.id, item_id: null, perfume_id: null, user_a: s.proposer_id, user_b: s.recipient_id, created_at: now(), last_message_at: null }; db.threads.push(t); save(); }
+      return t.id;
+    },
+    async itemThread(itemId) {
+      active(); const i = db.items.find((x) => x.id === Number(itemId));
+      if (!i || !i.tradeable || i.is_hidden) fail("This listing is not available.");
+      if (i.owner_id === uid) fail("This is your own listing.");
+      if (blockedWith(i.owner_id)) fail("This member is not available.");
+      if (ccOf(i.owner_id) !== ccOf(uid)) fail("This listing is in another country.");
+      let t = db.threads.find((x) => x.kind === "item" && x.item_id === i.id && x.user_a === uid);
+      if (!t) { t = { id: ++db.seq, kind: "item", swap_id: null, item_id: i.id, perfume_id: i.perfume_id, user_a: uid, user_b: i.owner_id, created_at: now(), last_message_at: null }; db.threads.push(t); save(); }
+      return t.id;
+    },
+    async sendMessage(threadId, body) {
+      active(); const t = myThread(threadId);
+      const other = t.user_a === uid ? t.user_b : t.user_a;
+      if (blockedWith(other)) fail("You can't message this member.");
+      body = String(body || "").trim();
+      if (!body) fail("Write a message first.");
+      if (body.length > 1000) fail("Messages can be up to 1,000 characters.");
+      const m = { id: ++db.seq, thread_id: t.id, sender_id: uid, body, created_at: now() };
+      db.messages.push(m); t.last_message_at = m.created_at; setRead(t.id); save(); return m.id;
+    },
+    async markThreadRead(threadId) { myThread(threadId); setRead(Number(threadId)); save(); },
+    async unreadThreads() { if (!uid) return 0; return (await this.listThreads()).filter((t) => t.unread).length; },
+    async getThread(id) {
+      me(); const t = db.threads.find((x) => x.id === Number(id) && [x.user_a, x.user_b].includes(uid));
+      if (!t) return null;
+      return { ...clone(t), a: lite(t.user_a), b: lite(t.user_b), perfume: t.perfume_id ? clone(perf(t.perfume_id)) : null,
+        swap: t.swap_id ? (({ id, is_gift, status }) => ({ id, is_gift, status }))(db.swaps.find((s) => s.id === t.swap_id) || {}) : null,
+        messages: clone(db.messages.filter((m) => m.thread_id === t.id).sort((a, b) => a.created_at.localeCompare(b.created_at))) };
+    },
+    async listThreads() {
+      me();
+      return db.threads.filter((t) => [t.user_a, t.user_b].includes(uid) && t.last_message_at).sort((a, b) => b.last_message_at.localeCompare(a.last_message_at)).map((t) => {
+        const ms = db.messages.filter((m) => m.thread_id === t.id).sort((a, b) => b.created_at.localeCompare(a.created_at)), l = ms[0] || null;
+        const r = db.threadReads.find((x) => x.thread_id === t.id && x.user_id === uid);
+        return { ...clone(t), a: lite(t.user_a), b: lite(t.user_b), perfume: t.perfume_id ? clone(perf(t.perfume_id)) : null,
+          swap: t.swap_id ? (({ id, is_gift, status }) => ({ id, is_gift, status }))(db.swaps.find((s) => s.id === t.swap_id) || {}) : null,
+          last: l && clone(l), unread: !!(l && l.sender_id !== uid && (!r || l.created_at > r.last_read_at)) };
+      });
+    },
     async setMeetPlan(id, plan) {
       const s = mySwap(id);
       if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
