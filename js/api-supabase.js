@@ -109,7 +109,19 @@
         await sb.auth.signOut();
       },
 
-      async getProfile(id) { return check(await sb.from("profiles").select("*").eq("id", id).maybeSingle()); },
+      async getProfile(id) {
+        const row = check(await sb.from("profiles").select("*").eq("id", id).maybeSingle());
+        if (row || !uid) return row;
+        // Members who aren't listed anywhere are still reachable from their link (migration 018).
+        const r = check(await sb.rpc("get_member", { p_id: id }));
+        return r?.[0] || null;
+      },
+      // A member you know, by their full display name (no partial matches: nobody can list everyone).
+      async findMembers(name) {
+        name = String(name || "").trim();
+        if (name.length < 2) fail("Type their full display name.");
+        return check(await sb.rpc("find_members", { p_name: name })) || [];
+      },
       async updateProfile(patch) {
         const row = { display_name: String(patch.display_name || "").trim(), city: String(patch.city || "").trim(), country: String(patch.country || "").trim(), bio: String(patch.bio || "").trim() };
         return check(await sb.from("profiles").update(row).eq("id", me()).select().single());

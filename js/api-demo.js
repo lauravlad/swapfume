@@ -384,6 +384,13 @@
     },
 
     async getProfile(id) { return clone(prof(id)); },
+    async findMembers(name) {
+      me(); name = String(name || "").trim();
+      if (name.length < 2) fail("Type their full display name.");
+      const k = Util.normText(name);
+      return clone(db.profiles.filter((p) => Util.normText(p.display_name) === k && !p.is_banned && !blockedWith(p.id))
+        .map((p) => ({ id: p.id, display_name: p.display_name, city: p.city, country: p.country, country_code: p.country_code, avatar_url: p.avatar_url || null })));
+    },
     async updateProfile(patch) {
       const p = prof(me());
       const name = String(patch.display_name ?? p.display_name).trim();

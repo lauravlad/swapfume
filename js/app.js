@@ -688,7 +688,21 @@
       <form id="bf" class="row" role="search" style="margin-bottom:16px">
         <input type="search" name="q" value="${q}" placeholder="Search brand or perfume" aria-label="Search trades" style="flex:1;min-width:200px">
         <div class="seg" role="group" aria-label="Size">${[["", "All"], ["sample", "Samples"], ["decant", "Decants"], ["full", "Bottles"]].map(([v, l]) => html`<button type="button" data-size="${v}" aria-pressed="${size === v}">${l}</button>`)}</div>
-      </form><div id="results"><div class="spinner"></div></div>`);
+      </form><div id="results"><div class="spinner"></div></div>
+      <form class="card find-member" id="fmForm" role="search" style="margin-top:24px">
+        <h3 style="margin-top:0">Find a member</h3>
+        <p class="small muted" style="margin-top:0">Know someone on Swapfume? Type their full display name.</p>
+        <div class="row" style="flex-wrap:nowrap"><input id="fmName" type="search" minlength="2" maxlength="40" required placeholder="Their display name" aria-label="Member's display name" style="flex:1"><button class="btn" id="fmGo">Find</button></div>
+        <div id="fmOut" aria-live="polite"></div>
+      </form>`);
+    $("#fmForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#fmGo"), async () => {
+        const found = await api.findMembers($("#fmName").value);
+        $("#fmOut").innerHTML = val(found.length ? html`<ul class="list" style="margin-top:12px">${found.map((m) => html`<li><a class="row" style="gap:10px;align-items:center;text-decoration:none;color:inherit" href="#/u/${m.id}">${avatar(m)}<span><b>${m.display_name}</b>${place(m) ? html` <span class="small muted">· ${place(m)}</span>` : ""}</span></a></li>`)}</ul>`
+          : html`<p class="small muted" style="margin:12px 0 0">No member with that exact name. Check the spelling — it has to be their full display name.</p>`);
+      });
+    });
     const submit = (sz = size) => go(`/browse?${new URLSearchParams({ ...($("#bf [name=q]").value ? { q: $("#bf [name=q]").value } : {}), ...(sz ? { size: sz } : {}) })}`);
     $("#bf").addEventListener("submit", (e) => { e.preventDefault(); submit(); });
     $$("[data-size]").forEach((b) => b.addEventListener("click", () => submit(b.dataset.size)));
@@ -698,7 +712,7 @@
       items = await api.listItems({ tradeableOnly: true, perfumeIds: ps.map((p) => p.id), excludeOwnerId: state.uid, country: myCC() });
     } else items = await api.listItems({ tradeableOnly: true, excludeOwnerId: state.uid, country: myCC(), limit: 120 });
     if (size) items = items.filter((i) => i.size === size);
-    $("#results").innerHTML = val(items.length ? html`<p class="small muted">${items.length} listing${items.length === 1 ? "" : "s"}</p><div class="grid">${items.map((i) => itemTile(i, { owner: true }))}</div>`
+    $("#results").innerHTML = val(items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { owner: true }))}</div>`
       : html`<div class="empty"><h3>Nothing here yet</h3><p>${q ? "No one is trading that right now. Add it to your wishlist and you'll see it in Matches when someone lists it." : "No listings yet."}</p><a class="btn secondary" href="#/collection?tab=want">Go to my wishlist</a></div>`);
   }
 
@@ -1071,7 +1085,7 @@
         ${wishes.length ? html`<ul class="list card" style="margin-top:16px">${wishes.map((w) => {
           const n = counts.filter((i) => i.perfume_id === w.perfume_id).length;
           return html`<li class="row between"><div><div class="brand">${w.perfume.brand}</div><a class="pname" href="#/perfume/${w.perfume.id}">${w.perfume.name}</a> <span class="muted small">${w.perfume.concentration}</span> ${familyChip(w.perfume)}
-            <div class="small">${n ? html`<a href="#/perfume/${w.perfume.id}">${n} member${n === 1 ? " is" : "s are"} trading this</a>` : html`<span class="muted">No one is trading it yet</span> · <a href="${buyUrl(w.perfume)}" target="_blank" rel="noopener sponsored">${CFG.BUY_SAMPLE_SHOP ? `Find a sample at ${CFG.BUY_SAMPLE_SHOP}` : "Search for a sample"} ↗</a>`}</div></div>
+            <div class="small">${n ? html`<a href="#/perfume/${w.perfume.id}">Available to swap</a>` : html`<span class="muted">No one is trading it yet</span> · <a href="${buyUrl(w.perfume)}" target="_blank" rel="noopener sponsored">${CFG.BUY_SAMPLE_SHOP ? `Find a sample at ${CFG.BUY_SAMPLE_SHOP}` : "Search for a sample"} ↗</a>`}</div></div>
             <button class="btn small ghost" data-unwish="${w.id}" aria-label="Remove ${pTitle(w.perfume)} from wishlist">Remove</button></li>`;
         })}</ul>` : html`<div class="empty" style="margin-top:16px"><h3>What are you hoping to smell?</h3><p>Search above to add perfumes to your wishlist.</p></div>`}`);
       perfumePicker($("#wishPick"), (p) => run(null, async () => { await api.addWish(p.id); toast(`Added ${p.name} to your wishlist.`); route(); }));
@@ -1116,10 +1130,10 @@
           <div class="field"><label class="switch"><input type="checkbox" id="imgRights" required> I have the rights to use this photo</label></div>
           <div class="row"><button class="btn small" id="imgSave">Set catalog photo</button>${p.image_url ? html`<button type="button" class="btn small secondary" id="imgRemove">Remove catalog photo</button>` : ""}</div></form></div>` : ""}
       <div id="prBox"><div class="spinner"></div></div>
-      <h2>Open to trade (${items.length})</h2>
+      <h2>Open to trade</h2>
       ${items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { owner: true }))}</div>` : p.status === "approved" ? buyHint(p) : html`<p class="muted">No one is trading this right now.</p>`}
-      <h2>On ${wishes.length} wishlist${wishes.length === 1 ? "" : "s"}</h2>
-      <p>${wishes.length ? wishes.map((w, k) => html`${k ? ", " : ""}<a href="#/u/${w.user.id}">${w.user.display_name}</a>`) : html`<span class="muted">No one yet.</span>`}</p>`);
+      ${wishes.length ? html`<h2>Wanted by</h2>
+      <p>${wishes.map((w, k) => html`${k ? ", " : ""}<a href="#/u/${w.user.id}">${w.user.display_name}</a>`)}</p>` : ""}`);
     $("#iHave").addEventListener("click", () => itemForm(null, p));
     const iw = $("#iWant"); if (iw) iw.addEventListener("click", () => run(iw, async () => { await api.addWish(p.id); toast("Added to your wishlist."); route(); }));
     $("#suggestNotes").addEventListener("click", () => notesDialog(p));
