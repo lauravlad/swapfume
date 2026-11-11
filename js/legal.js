@@ -99,7 +99,7 @@
 
 <h2>No money, no selling</h2>
 <p>${APP} is for swapping only. You may not buy, sell, or ask for or offer money, gift cards, payment apps or anything else of money value — not even "just for shipping". Each person pays for and arranges their own shipping. Listings or messages that try to sell will be removed.</p>
-<p>You may also <b>give</b> perfume as a gift, with nothing asked in return. Only the giver can offer a gift; please don't ask other members for free perfume.</p>
+<p>You may also <b>give</b> perfume as a gift, with nothing asked in return. Only the giver can offer a gift; please don't ask other members for free perfume. The person receiving a gift may offer to cover shipping by sending a <b>prepaid shipping label</b> bought directly from a carrier or label service — never money, gift cards or payment-app transfers to another member.</p>
 <p>When nobody is swapping a perfume, ${APP} may show a link to search for or buy a sample elsewhere. Any purchase is between you and that shop; ${OP} is not part of it. If ${OP} ever earns a commission from such a link, we'll say so next to it.</p>
 
 <h2>Shipping safely and legally</h2>

@@ -205,6 +205,24 @@
       async offerGift({ recipientId, myItemIds, message, method = "mail", qty = {} }) {
         return check(await sb.rpc("offer_gift_qty", { p_recipient: recipientId, p_my_items: myItemIds.map(Number), p_message: message || "", p_method: method, p_my_qty: myItemIds.map((i) => Number(qty[i] || 1)) }));
       },
+      // Prepaid shipping label for a gift (migration 019): private file, only the two people in the gift can open it.
+      async addGiftLabel(swapId, file) {
+        if (!file || !["application/pdf", "image/jpeg", "image/png"].includes(file.type)) fail("Choose a PDF, JPG or PNG of your shipping label.");
+        if (file.size > 5 * 1024 * 1024) fail("That file is bigger than 5 MB.");
+        const ext = file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : "jpg";
+        const path = `${Number(swapId)}/${Date.now()}-label.${ext}`;
+        check(await sb.storage.from("shipping-labels").upload(path, file, { contentType: file.type }));
+        check(await sb.rpc("set_gift_label", { p_swap: Number(swapId), p_path: path }));
+      },
+      async removeGiftLabel(swapId, path) {
+        check(await sb.rpc("set_gift_label", { p_swap: Number(swapId), p_path: null }));
+        if (path) await sb.storage.from("shipping-labels").remove([path]);
+      },
+      async giftLabelUrl(path) {
+        const { data, error } = await sb.storage.from("shipping-labels").createSignedUrl(path, 600);
+        if (error) fail("Couldn't open the label. Please try again.");
+        return data.signedUrl;
+      },
       async setMeetPlan(id, plan) { check(await sb.rpc("set_meet_plan", { p_swap: Number(id), p_plan: plan || "" })); },
       async markMet(id) { check(await sb.rpc("mark_met", { p_swap: Number(id) })); },
 

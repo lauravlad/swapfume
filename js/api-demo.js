@@ -549,6 +549,21 @@
       });
       save(); return s.id;
     },
+    // Prepaid shipping label for a gift (same rules as migration 019). The demo keeps the file in the browser.
+    async addGiftLabel(swapId, file) {
+      const s = mySwap(swapId);
+      if (!(s.is_gift && s.method === "mail" && s.status === "accepted" && s.recipient_id === uid && !s.proposer_shipped_at)) fail("You can add a shipping label only to a gift you accepted, before it ships.");
+      if (!file || !["application/pdf", "image/jpeg", "image/png"].includes(file.type)) fail("Choose a PDF, JPG or PNG of your shipping label.");
+      if (file.size > 5 * 1024 * 1024) fail("That file is bigger than 5 MB.");
+      s.label_path = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error("Couldn't read that file.")); r.readAsDataURL(file); });
+      s.updated_at = now(); save();
+    },
+    async removeGiftLabel(swapId) {
+      const s = mySwap(swapId);
+      if (!(s.recipient_id === uid && !s.proposer_shipped_at)) fail("You can add a shipping label only to a gift you accepted, before it ships.");
+      s.label_path = null; save();
+    },
+    async giftLabelUrl(path) { return path; },
     async setMeetPlan(id, plan) {
       const s = mySwap(id);
       if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");

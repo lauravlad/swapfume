@@ -1531,7 +1531,15 @@
       <div class="page-head" style="margin-top:8px"><div class="eyebrow">${gift ? "Gift offered" : "Swap started"} ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span>${gift ? html`<span class="pill rose gift-pill">${GIFT_ICON}Gift</span>` : ""}${meet ? html`<span class="pill ok near">${PIN}Meeting in person</span>` : html`<span class="pill grey">By mail</span>`}</div></div>
       <div class="stack">
         ${s.message ? html`<div class="card"><div class="small muted">${info.iAmP ? "Your note" : `${on}'s note`}</div><p style="margin:4px 0 0">“${s.message}”</p></div>` : ""}
-        ${gift ? html`<div class="card"><h3>${GIFT_ICON} ${info.iAmP ? `Your gift to ${on}` : `Your gift from ${on}`} <span class="pill">${s.items.length}</span></h3>${itemsList(s.items)}<p class="hint">${info.iAmP ? "Nothing is asked in return." : "Nothing to send back. Just enjoy it!"}</p></div>`
+        ${gift ? html`<div class="card"><h3>${GIFT_ICON} ${info.iAmP ? `Your gift to ${on}` : `Your gift from ${on}`} <span class="pill">${s.items.length}</span></h3>${itemsList(s.items)}<p class="hint">${info.iAmP ? "Nothing is asked in return." : "Nothing to send back. Just enjoy it!"}</p>
+          ${!meet && !closed && s.status !== "completed" ? html`<div class="notice label-tip" style="margin-top:10px">${info.iAmP
+            ? (s.label_path ? html`<b>${on} sent a prepaid shipping label.</b> Print it, stick it on the package and drop it off. <div style="margin-top:8px"><button class="btn small" id="labelOpen">Download shipping label</button></div>`
+              : html`<b>About shipping:</b> ${on} may cover it with a <b>prepaid shipping label</b>. If they add one, it appears here for you to print. Never accept money or payment apps on Swapfume.`)
+            : s.label_path ? html`<b>Prepaid label added ✓</b> ${on} will print it and use it to ship your gift. <div class="row" style="margin-top:8px"><button class="btn small secondary" id="labelOpen">View label</button>${s.status === "accepted" && !info.their.shipped ? html`<button class="btn small ghost" id="labelRemove">Remove</button>` : ""}</div>`
+            : s.status === "accepted" && !info.their.shipped ? html`<b>Want to cover shipping?</b> Buy a <b>prepaid shipping label</b> from the post office or a label site — addressed to you, from ${on}'s area — and add it here. ${on} just prints it and drops off the package. Never send money: Swapfume is always money-free.
+              <div style="margin-top:8px"><label class="btn small secondary">Add a prepaid shipping label<input type="file" id="labelFile" accept="application/pdf,image/jpeg,image/png" class="visually-hidden"></label></div>
+              <p class="hint" style="margin:6px 0 0">PDF, JPG or PNG, up to 5 MB. Only you and ${on} can see it.</p>`
+            : html`<b>Want to say thank you?</b> Once you accept, you can add a <b>prepaid shipping label</b> here so ${on} doesn't pay for shipping.`}</div>` : ""}</div>`
           : html`<div class="card"><div class="match-sides">
           <div><h3>You receive <span class="pill">${info.get.length}</span></h3>${itemsList(info.get)}</div><div><h3>You give <span class="pill">${info.give.length}</span></h3>${itemsList(info.give)}</div></div></div>`}
         ${closed ? html`<div class="notice">${s.status === "declined" ? (gift ? "This gift was declined." : "This proposal was declined.") : (gift ? "This gift was withdrawn." : "This proposal was withdrawn.")}</div>` : gift && !meet ? html`
@@ -1575,6 +1583,12 @@
     bind("#met", async () => { if (await confirmBox("Did you meet up and swap?", "Confirm only after you've exchanged the perfumes. When you've both confirmed, the swap is complete and you can review each other.", "Yes, we swapped")) { await api.markMet(s.id); toast("Lovely — enjoy your new scents!"); route(); refreshSwapDot(); } });
     const pf = $("#planForm");
     if (pf) pf.addEventListener("submit", (e) => { e.preventDefault(); run($("#planSave"), async () => { await api.setMeetPlan(s.id, $("#planIn").value); toast("Meeting plan saved."); route(); }); });
+    const lf = $("#labelFile");
+    if (lf) lf.addEventListener("change", () => { const f = lf.files[0]; if (f) run(null, async () => { await api.addGiftLabel(s.id, f); toast(`Label added. ${on} can now print it.`); route(); }); });
+    const lo = $("#labelOpen");
+    if (lo) lo.addEventListener("click", () => run(lo, async () => { const url = await api.giftLabelUrl(s.label_path); const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; a.download = "swapfume-shipping-label"; document.body.appendChild(a); a.click(); a.remove(); }));
+    const lr = $("#labelRemove");
+    if (lr) lr.addEventListener("click", () => run(lr, async () => { await api.removeGiftLabel(s.id, s.label_path); toast("Label removed."); route(); }));
     bind("#decline", async () => { if (await confirmBox(gift ? "Decline this gift?" : "Decline this swap?", `${on} will see that you declined.`, "Decline")) { await api.respondSwap(s.id, false); route(); refreshSwapDot(); } });
     bind("#cancel", async () => { if (await confirmBox("Withdraw your proposal?", "You can always propose again later.", "Withdraw")) { await api.cancelSwap(s.id); route(); } });
     bind("#ship", async () => { await api.markShipped(s.id); toast("Marked as shipped."); route(); refreshSwapDot(); });
