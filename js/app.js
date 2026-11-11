@@ -777,7 +777,21 @@
     return `${p.brand} ${p.name}${p.concentration ? ` (${p.concentration})` : ""}${bits.length ? " · " + bits.join(", ") : ""}`;
   }
   const me = () => state.profile?.display_name || "me";
-  function postTitle(items) { return `[US] Swap shelf: ${items.length} perfume${items.length === 1 ? "" : "s"} open for trade (no money, perfume for perfume)`; }
+  function postTitle(items, kind = "shelf") {
+    return kind === "wishlist" ? `[${myCC()}] ISO / looking for: ${items.slice(0, 3).map((i) => pTitle(i.perfume)).join(", ")}${items.length > 3 ? " and more" : ""} (swap only, no money)`
+      : `[${myCC()}] Swap shelf: ${items.length} perfume${items.length === 1 ? "" : "s"} open for trade (no money, perfume for perfume)`;
+  }
+  // A wishlist post: "I'm looking for these — have one to swap?"
+  function wishText(wishes, net = "facebook") {
+    const list = wishes.slice(0, 20), more = wishes.length - list.length;
+    const lines = net === "reddit"
+      ? ["Hi all! I'm looking for these perfumes (samples, decants or bottles), swap only, no money:", "", ...list.map((w) => "- " + pTitle(w.perfume)), ...(more > 0 ? [`- …and ${more} more`] : [])]
+      : [net === "instagram" ? "On my wishlist 💭" : "💭 Looking for these, any size: sample, decant or bottle", "Swap only, never money.", "", ...list.map((w) => "🌸 " + pTitle(w.perfume)), ...(more > 0 ? [`…and ${more} more`] : [])];
+    if (net === "reddit") lines.push("", `In ${myCountry().the}. I'm “${me()}” on Swapfume (${SITE_URL}), a free swap community, or just comment / DM me here.`);
+    else if (net === "instagram") lines.push("", `Have one to swap? Find me on Swapfume, I'm “${me()}” 💌 swapfume.com`, "", ["#perfumeswap", "#fragranceswap", "#perfumewishlist", "#perfumecommunity", "#fragrancecommunity", "#swapfume"].join(" "));
+    else lines.push("", `Have one to spare? Let's swap! Find me on Swapfume as “${me()}” 💌 ${SITE_URL}`);
+    return lines.join("\n");
+  }
   function postText(items, wishes, withWishes, net = "facebook") {
     const wishList = withWishes && wishes.length ? wishes.slice(0, 15) : [];
     const more = wishes.length > 15 ? wishes.length - 15 : 0;
@@ -832,7 +846,7 @@
     return Object.keys(score).sort((a, b) => score[b] - score[a])[0] || "classic";
   }
 
-  async function postImage(items, styleKey = "classic") {
+  async function postImage(items, styleKey = "classic", kind = "shelf") {
     const S = POST_STYLES[styleKey] || POST_STYLES.classic;
     const W = 1080, H = 1080, PAD = 92;
     try { await Promise.all([document.fonts.load('600 80px "Cormorant Garamond"'), document.fonts.load('italic 500 80px "Cormorant Garamond"'), document.fonts.load('500 34px "Jost"'), document.fonts.load('400 30px "Jost"')]); } catch {}
@@ -932,12 +946,12 @@
     const t1 = `${name}'s`;
     while (g.measureText(t1).width > 640 && fs > 50) { fs -= 4; g.font = `italic 500 ${fs}px ${serif}`; }
     g.fillText(t1, PAD, 228);
-    g.font = `600 ${fs}px ${serif}`; g.fillText("scent wardrobe", PAD, 228 + fs * .95);
+    g.font = `600 ${fs}px ${serif}`; g.fillText(kind === "wishlist" ? "wishlist" : "scent wardrobe", PAD, 228 + fs * .95);
     const fy = 228 + fs * .95 + 40;
     g.strokeStyle = S.gold; g.lineWidth = 1.6; g.beginPath(); g.moveTo(PAD, fy); g.lineTo(PAD + 120, fy); g.stroke();
     g.fillStyle = S.gold; g.save(); g.translate(PAD + 136, fy); g.rotate(Math.PI / 4); g.fillRect(-5, -5, 10, 10); g.restore();
     g.beginPath(); g.moveTo(PAD + 152, fy); g.lineTo(PAD + 272, fy); g.stroke();
-    g.fillStyle = S.muted; g.font = `italic 500 34px ${serif}`; g.fillText("open for swapping", PAD + 300, fy + 10);
+    g.fillStyle = S.muted; g.font = `italic 500 34px ${serif}`; g.fillText(kind === "wishlist" ? "looking to swap for" : "open for swapping", PAD + 300, fy + 10);
 
     // The list
     const fit = (text, max) => { if (g.measureText(text).width <= max) return text; while (text.length > 1 && g.measureText(text + "…").width > max) text = text.slice(0, -1); return text.trimEnd() + "…"; };
@@ -958,7 +972,7 @@
       g.fillText(fit([p.concentration, SIZE_LABEL[i.size], i.volume_ml ? `${+i.volume_ml} ml` : ""].filter(Boolean).join(" · "), maxW - nw - 24), PAD + 42 + nw + 22, y - 2);
       y += rowH;
     }
-    if (items.length > rows.length) { g.fillStyle = S.accent; g.font = `italic 500 34px ${serif}`; g.fillText(`…and ${items.length - rows.length} more to discover`, PAD + 42, y - 6); }
+    if (items.length > rows.length) { g.fillStyle = S.accent; g.font = `italic 500 34px ${serif}`; g.fillText(`…and ${items.length - rows.length} more ${kind === "wishlist" ? "on my list" : "to discover"}`, PAD + 42, y - 6); }
 
     // Footer
     g.strokeStyle = S.gold; g.globalAlpha = .5; g.lineWidth = 1; g.beginPath(); g.moveTo(PAD, H - 140); g.lineTo(W - PAD, H - 140); g.stroke(); g.globalAlpha = 1;
@@ -976,10 +990,12 @@
     }
   }
 
-  async function sharePostDialog(items, wishes, startNet = "facebook") {
+  // kind "shelf": what I offer (items = my open-to-trade listings). kind "wishlist": what I'm looking for.
+  async function sharePostDialog(items, wishes, startNet = "facebook", kind = "shelf") {
+    if (kind === "wishlist") items = wishes.map((w) => ({ id: w.id, perfume_id: w.perfume_id, perfume: w.perfume }));
     const suggested = suggestedStyle(items, wishes);
     let style = suggested, net = startNet;
-    let img = await postImage(items, style);
+    let img = await postImage(items, style, kind);
     const toFile = (im) => im.blob ? new File([im.blob], "swapfume-swap-shelf.png", { type: "image/png" }) : null;
     let file = toFile(img);
     const canShareFile = !!(file && navigator.canShare?.({ files: [file] }));
@@ -988,7 +1004,7 @@
       instagram: canShareFile ? "Tap Share picture, pick Instagram, then paste the caption (it's copied for you)." : "Instagram posts are made in the Instagram app. Save the picture, send it to your phone, then post it with the caption below.",
       reddit: "Reddit opens with your title and text already filled in. Pick a perfume or swap community, and check its rules first: many ask for a set title format or don't allow swap posts."
     };
-    openModal(html`<div class="dlg share-dlg"><h3>Share your swap shelf</h3>
+    openModal(html`<div class="dlg share-dlg"><h3>${kind === "wishlist" ? "Share your wishlist" : "Share your swap shelf"}</h3>
       <div class="tabs net-tabs" role="tablist">${Object.entries(NETWORKS).map(([k, n]) => html`<button role="tab" data-net="${k}" aria-selected="${k === net}">${n.icon}<span>${n.label}</span></button>`)}</div>
       <p class="muted small" id="netHow"></p>
       <div id="picBox">
@@ -999,12 +1015,12 @@
       </div>
       <div class="field" id="titleField" hidden><label for="postTitle">Title</label><input id="postTitle" type="text" maxlength="300"></div>
       <div class="field"><label for="postText" id="postTextLabel">Post text</label><textarea id="postText" rows="8"></textarea></div>
-      ${wishes.length ? html`<label class="switch small"><input type="checkbox" id="postWishes"> Also list what I'm hoping to find</label>` : ""}
+      ${wishes.length && kind !== "wishlist" ? html`<label class="switch small"><input type="checkbox" id="postWishes"> Also list what I'm hoping to find</label>` : ""}
       <p class="hint">Only share what you're happy to make public. Never post your address. Swaps stay perfume-for-perfume, so no prices.</p>
       <div class="dlg-actions" id="netActions"></div></div>`, (m) => {
       const ta = $("#postText", m), cb = $("#postWishes", m), tt = $("#postTitle", m);
       let edited = false; ta.addEventListener("input", () => { edited = true; });
-      const fillText = () => { ta.value = postText(items, wishes, cb?.checked, net); edited = false; };
+      const fillText = () => { ta.value = kind === "wishlist" ? wishText(wishes, net) : postText(items, wishes, cb?.checked, net); edited = false; };
       const savePic = () => { const a = document.createElement("a"); a.href = img.url; a.download = "swapfume-swap-shelf.png"; document.body.appendChild(a); a.click(); a.remove(); };
       const label = () => NETWORKS[net].label;
       const draw = () => {
@@ -1012,7 +1028,7 @@
         $("#netHow", m).textContent = HOW[net];
         $("#titleField", m).hidden = net !== "reddit";
         $("#postTextLabel", m).textContent = net === "instagram" ? "Caption (you can edit it)" : net === "reddit" ? "Text (you can edit it)" : "Post text (you can edit it)";
-        if (net === "reddit" && !tt.value) tt.value = postTitle(items);
+        if (net === "reddit" && !tt.value) tt.value = postTitle(items, kind);
         const n = NETWORKS[net];
         $("#netActions", m).innerHTML = val(html`<button class="btn ghost" data-close>Close</button>
           ${net === "reddit" ? html`<button class="btn secondary" id="postSave">Save picture</button><button class="btn" id="postGo">${n.icon}<span>Open Reddit</span></button>`
@@ -1054,7 +1070,7 @@
       if (cb) cb.addEventListener("change", fillText);
       $$("[name=postStyle]", m).forEach((r) => r.addEventListener("change", async () => {
         style = r.value; const pic = $("#postPic", m); pic.style.opacity = ".5";
-        img = await postImage(items, style); file = toFile(img); pic.src = img.url; pic.style.opacity = "";
+        img = await postImage(items, style, kind); file = toFile(img); pic.src = img.url; pic.style.opacity = "";
       }));
     });
   }
@@ -1082,6 +1098,7 @@
     } else {
       const counts = await api.listItems({ tradeableOnly: true, perfumeIds: wishes.map((w) => w.perfume_id), excludeOwnerId: state.uid, country: myCC() });
       body.innerHTML = val(html`<div class="field"><label>Add to wishlist</label><div id="wishPick"></div></div>
+        ${wishes.length ? html`<div class="share-row"><span class="muted small">Share what you're looking for:</span>${Object.entries(NETWORKS).map(([k, n]) => html`<button class="btn small secondary net-btn" data-wshare="${k}">${n.icon}<span>${n.label}</span></button>`)}</div>` : ""}
         ${wishes.length ? html`<ul class="list card" style="margin-top:16px">${wishes.map((w) => {
           const n = counts.filter((i) => i.perfume_id === w.perfume_id).length;
           return html`<li class="row between"><div><div class="brand">${w.perfume.brand}</div><a class="pname" href="#/perfume/${w.perfume.id}">${w.perfume.name}</a> <span class="muted small">${w.perfume.concentration}</span> ${familyChip(w.perfume)}
@@ -1090,6 +1107,7 @@
         })}</ul>` : html`<div class="empty" style="margin-top:16px"><h3>What are you hoping to smell?</h3><p>Search above to add perfumes to your wishlist.</p></div>`}`);
       perfumePicker($("#wishPick"), (p) => run(null, async () => { await api.addWish(p.id); toast(`Added ${p.name} to your wishlist.`); route(); }));
       $$("[data-unwish]", body).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.removeWish(b.dataset.unwish); route(); })));
+      $$("[data-wshare]", body).forEach((b) => b.addEventListener("click", () => run(b, async () => sharePostDialog([], wishes, b.dataset.wshare, "wishlist"))));
     }
   }
 
