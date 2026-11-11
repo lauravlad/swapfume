@@ -147,6 +147,18 @@
           : query.order("brand").order("name");
         return check(await query.limit(limit));
       },
+      // "Take a photo": the identify-perfumes Edge Function asks the AI which perfumes are in the picture.
+      async identifyPerfumes(file) {
+        me();
+        const { dataUrl } = await Util.resizeImage(file, 1568, 0.85);
+        const { data, error } = await sb.functions.invoke("identify-perfumes", { method: "POST", body: { image: dataUrl, media_type: "image/jpeg" } });
+        if (error) {
+          let msg = "";
+          try { msg = (await error.context.json()).error; } catch (e) { /* not JSON */ }
+          fail(msg || "We couldn't read this photo right now. Please try again.");
+        }
+        return data?.perfumes || [];
+      },
       // Every approved perfume (id, brand, name, concentration) for "Paste your list" matching. Loaded in pages of 1000.
       async catalogIndex() {
         const out = [];

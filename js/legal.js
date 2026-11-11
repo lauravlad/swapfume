@@ -26,6 +26,7 @@
   <li><b>Your shipping address:</b> the name and address you enter for packages.</li>
   <li><b>Your postal code</b> (ZIP code in the US), if you add it, and its approximate centre point, used only to work out roughly how far you are from other members. In Canada we keep only the first 3 characters. Centre points come from public lists: the US Census Bureau and GeoNames (geonames.org, CC BY 4.0).</li>
   <li><b>Messages</b> you send another member about a swap, a gift or a listing.</li>
+  <li><b>"Take a photo":</b> if you use it, the photo is sent to our AI provider (Anthropic) only to read the perfume labels, and the list of perfumes comes back to you. Swapfume doesn't store the photo; we only count how many photos you used today.</li>
   <li><b>Community meetups:</b> meetups you organize (title, date, city, public meeting place, description), whether you said you're going, and comments you post on them.</li>
   <li><b>"Bring ${APP} to my country":</b> if you ask for your country, your email address and the country you named.</li>
   <li><b>What you list and write:</b> your collection, wishlist, profile photo and other photos you upload, swaps (including meet-up plans you write), swap reviews, perfume reviews and ratings, "Helpful" votes, catalog suggestions, reports and blocks.</li>
@@ -49,7 +50,7 @@
 <p>Only to run ${APP}: to let you sign in, match you with other members in your country, show swap partners where to ship, run community meetups, build trust through reviews, keep the community safe (moderation, bans, reports), and answer your support messages. If you asked us to bring ${APP} to your country, we use your email only to tell you when it opens there, then delete it. We don't sell your data, and we don't show ads.</p>
 
 <h2>Service providers</h2>
-<p>We use trusted providers to host the site and the database (for example Supabase for accounts, data and photo storage, and our web host for the pages). They process data only on our behalf. Fonts are loaded from Google Fonts, and the small area maps from OpenStreetMap; both see your IP address when the page loads.</p>
+<p>We use trusted providers to host the site and the database (for example Supabase for accounts, data and photo storage, and our web host for the pages), and Anthropic to read perfume labels when you use "Take a photo". They process data only on our behalf. Fonts are loaded from Google Fonts, and the small area maps from OpenStreetMap; both see your IP address when the page loads.</p>
 <p><b>Where your data is stored:</b> ${APP} is run from the United States, and our providers may store and process data in the United States or other countries, which may have different data-protection laws from yours. Where the law requires it (for example for members in the European Union), these transfers rely on safeguards such as the European Commission's Standard Contractual Clauses in our providers' data-processing terms.</p>
 
 <h2>How long we keep it</h2>

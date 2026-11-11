@@ -429,6 +429,13 @@
         && terms.every((t) => Util.normText(p.brand + " " + p.name + " " + (p.perfumers || []).join(" ")).includes(t)))
         .sort(sort === "rating" ? byRating : byName).slice(0, limit));
     },
+    // Demo stand-in for the AI: pretends it saw three bottles (the real one reads your photo).
+    async identifyPerfumes(file) {
+      me(); await Util.resizeImage(file, 400, 0.6); await new Promise((r) => setTimeout(r, 900));
+      return [{ brand: "Maison Francis Kurkdjian", name: "Baccarat Rouge 540", concentration: "Eau de Parfum", size: "full", confidence: "high" },
+        { brand: "Le Labo", name: "Santal 33", concentration: "", size: "decant", confidence: "medium" },
+        { brand: "Byredo", name: "Gypsy Water", concentration: "Eau de Parfum", size: "sample", confidence: "low" }];
+    },
     async catalogIndex() { me(); return db.perfumes.filter((p) => p.status === "approved").map(({ id, brand, name, concentration }) => ({ id, brand, name, concentration })); },
     async getPerfume(id) {
       const p = perf(Number(id));

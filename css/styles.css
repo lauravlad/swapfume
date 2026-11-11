@@ -582,3 +582,5 @@ fieldset.field legend { font-weight: 600; margin-bottom: 4px; }
 .imp-fields select, .imp-fields input { min-width: 0; padding: 8px 10px; }
 @media (max-width: 560px) { .imp-fields { grid-template-columns: 1fr 64px 76px; } .imp-fields [data-pick] { grid-column: 1 / -1; } }
 .dup-hint { color: var(--accent); }
+
+#impPhotoBtn svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }

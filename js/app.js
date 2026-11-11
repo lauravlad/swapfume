@@ -1099,7 +1099,7 @@
     if (tab === "have") {
       const openItems = items.filter((i) => i.tradeable && !i.is_hidden);
       body.innerHTML = val(html`<div class="row between" style="margin-bottom:14px"><p class="small" style="margin:0">${availableText(items) ? html`<b>Available to swap:</b> ${availableText(items)}` : html`<span class="muted">Nothing open to trade yet</span>`}</p>
-          <div class="row" style="gap:8px"><button class="btn" id="addItem">Add a perfume</button><a class="btn secondary" href="#/collection/import">Paste a list</a></div></div>
+          <div class="row" style="gap:8px"><button class="btn" id="addItem">Add a perfume</button><a class="btn secondary" href="#/collection/import">Paste a list or photo</a></div></div>
         ${openItems.length ? html`<div class="share-row"><span class="muted small">Share what you're trading:</span>${Object.entries(NETWORKS).map(([k, n]) => html`<button class="btn small secondary net-btn" data-share="${k}">${n.icon}<span>${n.label}</span></button>`)}</div>` : ""}
         ${items.length ? html`<div class="grid">${items.map((i) => itemTile(i, { mine: true }))}</div>` : html`<div class="empty"><h3>Your shelf is empty</h3><p>Add the samples, decants and bottles you own. Mark the ones you'd trade.</p></div>`}`);
       $("#addItem").addEventListener("click", () => itemForm(null));
@@ -2047,13 +2047,16 @@
         <label for="impText">Your list</label>
         <textarea id="impText" rows="9" placeholder="Baccarat Rouge 540 sample&#10;Le Labo Santal 33 10ml decant&#10;Delina PDM full bottle&#10;…"></textarea>
         <div class="row" style="margin-top:10px"><button class="btn" id="impGo">Find my perfumes</button>
-          <label class="btn secondary">Upload a file (.txt or .csv)<input type="file" id="impFile" accept=".txt,.csv,text/plain,text/csv" class="visually-hidden"></label></div>
+          <label class="btn secondary" id="impPhotoBtn">${CAMERA}<span>Take a photo</span><input type="file" id="impPhoto" accept="image/*" class="visually-hidden"></label>
+          <label class="btn ghost">Upload a file (.txt or .csv)<input type="file" id="impFile" accept=".txt,.csv,text/plain,text/csv" class="visually-hidden"></label></div>
+        <p class="hint" style="margin:8px 0 0">📷 <b>Take a photo</b> of your shelf, a few bottles or one bottle with the labels showing — AI reads them for you. You check every match before anything is added. Up to 10 photos a day.</p>
         <details class="small" style="margin-top:12px"><summary><b>Your list is on Fragrantica?</b></summary>
           <p>Fragrantica doesn't offer a download, but copying works: open your collection there (<b>“I have”</b>), select the list of perfumes on the page, copy it (<b>Cmd+C</b> / <b>Ctrl+C</b>), and paste it above. Extra words are fine — Swapfume picks out the perfume names, and you check every match before anything is added.</p></details>
       </div>
       <div id="impOut"></div>`);
     let catalog = null, matcher = null;
     let mine = new Map();
+    const aiGuesses = new Set(); // lines the AI only guessed from a photo: always shown as "not sure"
     const ensure = async () => {
       if (!matcher) { catalog = await api.catalogIndex(); matcher = Util.catalogMatcher(catalog); }
       mine = new Map((await api.listItems({ ownerId: state.uid })).map((i) => [i.perfume_id, i]));
@@ -2062,7 +2065,7 @@
     const defSize = ["sample", "decant", "full"].includes(last.size) ? last.size : "sample";
     const review = (lines) => {
       const rows = lines.map(Util.parseListLine).filter(Boolean).slice(0, 200).map((l) => ({ l, cands: matcher(l) }));
-      const found = rows.filter((r) => r.cands.length && r.cands[0].score >= 0.8).length;
+      const found = rows.filter((r) => r.cands.length && r.cands[0].score >= 0.8 && !aiGuesses.has(r.l.raw)).length;
       // Possible duplicates: the same perfume twice in the list, or one you already have.
       const firstLine = new Map();
       rows.forEach((r, k) => {
@@ -2074,7 +2077,7 @@
         <p class="small muted">${found} of ${rows.length} matched for sure. Check the others, change anything that's wrong, or untick a line to skip it.</p>
         <label class="switch small"><input type="checkbox" id="impTrade" ${last.tradeable === false ? "" : raw("checked")}> Mark all as open to swap or gift</label>
         <ul class="list imp-list">${rows.map((r, k) => {
-          const sure = r.cands.length && r.cands[0].score >= 0.8, size = r.l.size || defSize;
+          const sure = r.cands.length && r.cands[0].score >= 0.8 && !aiGuesses.has(r.l.raw), size = r.l.size || defSize;
           return html`<li class="imp-row ${sure ? "sure" : r.cands.length ? "maybe" : "none"}" data-k="${k}">
             <label class="imp-use"><input type="checkbox" data-use ${r.cands.length && !r.dupOf && !r.have ? raw("checked") : r.cands.length ? "" : raw("disabled")}><span class="small muted">“${r.l.raw}”</span></label>
             ${r.dupOf ? html`<p class="hint dup-hint" style="margin:0">Possible duplicate: same perfume as line ${r.dupOf}. Unticked — tick it if it's a second one.</p>` : ""}
@@ -2107,6 +2110,21 @@
     };
     const runIt = (text) => run($("#impGo"), async () => { await ensure(); review(String(text || "").split(/\r?\n/)); $("#impOut").scrollIntoView({ behavior: "smooth", block: "start" }); });
     $("#impGo").addEventListener("click", () => runIt($("#impText").value));
+    $("#impPhoto").addEventListener("change", (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      e.target.value = "";
+      run($("#impGo"), async () => {
+        $("#impGo").textContent = "Reading your photo…";
+        const found = await api.identifyPerfumes(f);
+        $("#impGo").textContent = "Find my perfumes";
+        if (!found.length) { toast("We couldn't spot any perfume labels. Try a closer photo with the labels facing the camera.", "error"); return; }
+        const lines = found.map((p) => [p.brand, p.name, p.concentration, p.size && p.size !== "unknown" ? p.size : ""].filter(Boolean).join(" "));
+        found.forEach((p, k) => { if (p.confidence === "low") aiGuesses.add(lines[k]); });
+        const box = $("#impText"); box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + lines.join("\n");
+        toast(`Found ${found.length} perfume${found.length === 1 ? "" : "s"} in your photo. Check them below.`);
+        await ensure(); review(box.value.split(/\r?\n/)); $("#impOut").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
     $("#impFile").addEventListener("change", (e) => {
       const f = e.target.files[0]; if (!f) return;
       if (f.size > 500000) { toast("That file is too big. Try a shorter list.", "error"); return; }
