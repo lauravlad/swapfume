@@ -115,8 +115,9 @@ For every item below, answer:
 | Contact Info → **Name** | Display name, and the name on the package |
 | Contact Info → **Physical Address** | Shipping address, shown only to a swap partner |
 | Location → **Coarse Location** | Postal code, for rounded distances and nearby swaps |
-| User Content → **Photos or Videos** | Profile and bottle photos |
+| User Content → **Photos or Videos** | Profile and bottle photos; "Take a photo" pictures (sent to Anthropic to read labels, not stored) |
 | User Content → **Other User Content** | Reviews, swap notes, listings, wishlist |
+| User Content → **Emails or Text Messages** | In-app messages between members about a swap, gift or listing (added for 1.2) |
 | User Content → **Customer Support** | Messages to hello@swapfume.com |
 | Identifiers → **User ID** | Your account ID |
 
