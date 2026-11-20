@@ -429,6 +429,8 @@
         && terms.every((t) => Util.normText(p.brand + " " + p.name + " " + (p.perfumers || []).join(" ")).includes(t)))
         .sort(sort === "rating" ? byRating : byName).slice(0, limit));
     },
+    async notifySwap() { /* the demo doesn't send emails */ },
+    async setEmailNotifications(on) { const p = prof(me()); p.email_notifications = !!on; save(); return clone(p); },
     // Demo stand-in for the AI: pretends it saw three bottles (the real one reads your photo).
     async identifyPerfumes(file) {
       me(); await Util.resizeImage(file, 400, 0.6); await new Promise((r) => setTimeout(r, 900));

@@ -147,6 +147,14 @@
           : query.order("brand").order("name");
         return check(await query.limit(limit));
       },
+      // Email the other member about a new proposal or gift (best effort: a failure never blocks the swap).
+      async notifySwap(swapId) {
+        if (!uid || !window.APP_CONFIG.SWAP_EMAIL_FUNCTION) return;
+        try { await sb.functions.invoke(window.APP_CONFIG.SWAP_EMAIL_FUNCTION, { method: "POST", body: { swap_id: Number(swapId) } }); } catch (e) { /* ignore */ }
+      },
+      async setEmailNotifications(on) {
+        return check(await sb.from("profiles").update({ email_notifications: !!on }).eq("id", me()).select().single());
+      },
       // "Take a photo": the identify-perfumes Edge Function asks the AI which perfumes are in the picture.
       async identifyPerfumes(file) {
         me();

@@ -1448,6 +1448,7 @@
       const fd = new FormData(e.target);
       run($("#sendProp"), async () => {
         const id = await api.proposeSwap({ recipientId: otherId, myItemIds: fd.getAll("mine"), theirItemIds: fd.getAll("their"), message: $("#msg").value, method: method(), qty: pickedQty(fd) });
+        api.notifySwap(id);
         toast("Proposal sent."); go(`/swap/${id}`);
       });
     });
@@ -1486,6 +1487,7 @@
       run($("#sendProp"), async () => {
         const fd = new FormData(e.target);
         const id = await api.offerGift({ recipientId: other.id, myItemIds: fd.getAll("mine"), message: $("#msg").value, method: method(), qty: pickedQty(fd) });
+        api.notifySwap(id);
         toast("Gift offered. How lovely!"); go(`/swap/${id}`);
       });
     });
@@ -1642,6 +1644,9 @@
         <div class="row" style="align-items:flex-end"><div style="flex:0 1 180px"><label for="zipIn">${C.postal[0].toUpperCase() + C.postal.slice(1)}</label><input id="zipIn" type="text" ${C.code === "CA" ? "" : raw('inputmode="numeric"')} maxlength="8" autocomplete="postal-code" value="${loc?.zip || ""}" placeholder="e.g. ${C.example}" required></div>
           <button class="btn" id="saveZip">${loc ? "Update" : "Save"}</button>${loc ? html`<button type="button" class="btn ghost" id="clearZip">Remove</button>` : ""}</div>
         ${myArea ? html`<div class="zip-preview"><div>${areaMap(myArea, p.city)}</div><p class="small muted">This is what members see on your profile: the general area, centred on a point blurred by several miles. Your ${C.postal} and exact location are never shown.</p></div>` : ""}</form>
+      <div class="card"><h3>Emails</h3>
+        <label class="switch"><input type="checkbox" id="emailNotif" ${p.email_notifications === false ? "" : raw("checked")}> Email me when someone sends me a swap proposal or a gift</label>
+        <p class="hint" style="margin:6px 0 0">From hello@swapfume.com, one email per proposal. Account emails (like password resets) always come.</p></div>
       <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a></div></div>
       <div class="card"><h3>Blocked members</h3>
         ${blocks.length ? html`<ul class="list">${blocks.map((b) => html`<li class="row between"><span>${avatar(b.blocked)} <a href="#/u/${b.blocked_id}">${b.blocked?.display_name || "Former member"}</a></span><button class="btn small ghost" data-unblock="${b.blocked_id}">Unblock</button></li>`)}</ul>`
@@ -1660,6 +1665,7 @@
       if (moved) await api.setMyCountry(cc);
       state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: Util.country(cc).name, bio: $("#pb").value });
       toast("Profile saved."); if (moved) route(); }); });
+    $("#emailNotif").addEventListener("change", (e) => run(null, async () => { state.profile = await api.setEmailNotifications(e.target.checked); toast(e.target.checked ? "You'll get an email for new proposals and gifts." : "Emails for new proposals and gifts are off."); }));
     $("#addrForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveAddr"), async () => { await api.saveMyAddress({ full_name: $("#an").value, address: $("#aa").value }); toast("Address saved."); }); });
     $("#zipForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveZip"), async () => { await api.setMyLocation($("#zipIn").value, C.code); toast(`${C.postal[0].toUpperCase() + C.postal.slice(1)} saved. Nearby swappers will show in your matches.`); route(); }); });
     const cz = $("#clearZip"); if (cz) cz.addEventListener("click", () => run(cz, async () => { await api.clearMyLocation(); toast(`${C.postal[0].toUpperCase() + C.postal.slice(1)} removed.`); route(); }));

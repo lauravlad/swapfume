@@ -59,6 +59,7 @@
 <h2>Your choices</h2>
 <ul>
   <li>Edit your profile and address any time under <b>Me</b>.</li>
+  <li>Turn off emails about new swap proposals and gifts under <b>Me → Emails</b>.</li>
   <li>Delete your account any time under <b>Me → Delete account</b>.</li>
   <li>Ask us for a copy of your data, or to correct it, at ${mail}.</li>
 </ul>

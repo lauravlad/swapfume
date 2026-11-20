@@ -175,6 +175,7 @@ parts.push(['private_members', head('018 nobody but admins can count the members
 parts.push(['gift_labels', head('019 prepaid shipping labels for gifts', 'Same as supabase/migrations/019_gift_labels.sql.') + mig('019_gift_labels.sql')]);
 parts.push(['messages', head('020 messages in swaps and about listings', 'Same as supabase/migrations/020_messages.sql.') + mig('020_messages.sql')]);
 parts.push(['ai_photos', head('021 daily limit for AI photo recognition', 'Same as supabase/migrations/021_ai_photos.sql.') + mig('021_ai_photos.sql')]);
+parts.push(['swap_emails', head('022 email when someone sends you a swap or gift', 'Same as supabase/migrations/022_swap_emails.sql.') + mig('022_swap_emails.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);
