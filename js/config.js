@@ -26,8 +26,8 @@ window.APP_CONFIG = {
   // supabase/functions/identify-perfumes/index.ts. Supabase named it "super-service" when it was deployed.
   AI_PHOTO_FUNCTION: "super-service",
   // Email to the other member when someone proposes a swap or offers a gift
-  // (supabase/functions/swap-email/index.ts). Set to the name it was deployed under.
-  SWAP_EMAIL_FUNCTION: "swap-email",
+  // (supabase/functions/swap-email/index.ts). Its web address is "swift-processor" (Supabase picked it).
+  SWAP_EMAIL_FUNCTION: "swift-processor",
   // "Buy a sample" link, shown when nobody is swapping a perfume. Members never pay each other on Swapfume.
   // Empty = a plain web search. To send people to one shop, set its name and a search address with {q}
   // where the perfume name goes, e.g. BUY_SAMPLE_URL: "https://shop.example/search?q={q}".
