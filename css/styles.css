@@ -948,3 +948,75 @@ body.scrolled .topbar { box-shadow: 0 8px 24px -18px rgba(30, 26, 34, .45); }
   @keyframes nudge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); } }
   .dot:not([hidden]) { animation: nudge .6s var(--ease-spring) 2 .4s; }
 }
+
+/* =====================================================================
+   COMMUNITY (2026-11-24): feed posts, composer, comments, friends.
+   Post kinds reuse the size/brand colours: Scent of the day = raspberry,
+   New discovery = teal, Haul = saffron, Question = green, Thoughts = grey.
+   ===================================================================== */
+.tablink .dot, .tabs .dot { position: relative; top: -6px; right: auto; margin-left: 3px; display: inline-block; }
+.post-list { display: grid; gap: 14px; }
+.post.card { padding: 16px 16px 8px; margin: 0; }
+.post.is-hidden { opacity: .7; }
+.post-head { display: flex; align-items: center; gap: 10px; }
+.post-head .grow, .friend-row .grow { flex: 1; min-width: 0; }
+.post-name { font-weight: 600; color: var(--ink); text-decoration: none; }
+.post-name:hover { text-decoration: underline; }
+.post-body { margin: 12px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 1.02rem; line-height: 1.55; }
+.post-photo { display: block; margin: 12px -16px 0; }
+.post-photo img { display: block; width: 100%; max-height: 520px; object-fit: cover; background: var(--surface-2); }
+.post-perfume { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 7px 12px 7px 10px; border-radius: 999px; text-decoration: none; color: var(--ink); font-size: .9rem;
+  background: color-mix(in srgb, var(--tint, var(--surface-2)) 20%, var(--surface)); border: 1px solid color-mix(in srgb, var(--tint, var(--line)) 50%, var(--line)); max-width: 100%; }
+.post-perfume > span:not(.fam-dot):not(.pill) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-perfume .fam-dot { background: var(--tint); flex: none; }
+.post-perfume .pill { flex: none; }
+a.post-perfume:hover { border-color: var(--tint); }
+.post-actions { display: flex; align-items: center; gap: 2px; margin: 10px -8px 0; padding-top: 4px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.post-actions .grow { flex: 1; }
+.post-act { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 500 .9rem var(--sans); text-decoration: none; cursor: pointer; }
+.post-act.small { font-size: .82rem; }
+.post-act:hover { background: var(--surface-2); color: var(--ink); }
+.post-act .ico-inline { width: 20px; height: 20px; }
+.post-act .heart { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.post-act.like.on { color: var(--accent); }
+.post-act.like.on .heart { fill: currentColor; }
+.post-act.add { color: var(--teal); font-weight: 600; }
+.friend-tag { display: inline-block; font: 600 .72rem var(--sans); color: var(--teal); background: var(--teal-soft); padding: 2px 8px; border-radius: 999px; vertical-align: middle; letter-spacing: 0; }
+h1 .friend-tag { font-size: .8rem; }
+
+/* Composer: one line until you tap it, then the options slide open */
+.composer { padding: 14px 16px; margin-bottom: 16px; }
+.composer-top { display: flex; gap: 10px; align-items: flex-start; }
+.composer-top textarea { flex: 1; min-height: 46px; resize: vertical; }
+.composer-more { display: none; gap: 12px; margin-top: 12px; }
+.composer.open .composer-more { display: grid; }
+.seg.kinds { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 16px; }
+.seg.kinds label { padding: 7px 12px; border-radius: 999px; font-size: .85rem; cursor: pointer; color: var(--muted); }
+.composer .photo-pick { margin: 0; }
+.friend-ask { display: flex; align-items: center; gap: 8px; text-decoration: none; margin-bottom: 14px; }
+.friend-ask .grow { flex: 1; }
+
+/* Comments */
+.comments { margin-top: 14px; }
+.comment-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 12px; }
+.comment-list li { display: flex; gap: 10px; align-items: flex-start; }
+.comment-list .bubble { background: var(--surface-2); padding: 9px 13px; border-radius: 16px; border-top-left-radius: 5px; white-space: pre-wrap; word-break: break-word; }
+.comment-list .bubble a { color: var(--ink); text-decoration: none; margin-right: 4px; }
+
+/* Friends & Discover */
+.friend-row { display: flex; align-items: center; gap: 12px; }
+.friend-row a { color: var(--ink); text-decoration: none; }
+.disc-section { margin-bottom: 8px; }
+.chip-scroll { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; }
+.chip-scroll::-webkit-scrollbar { display: none; }
+.chip-scroll .post-perfume { margin-top: 0; flex: none; max-width: 80vw; }
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes heart-pop { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+  .post-act.like.on .heart { animation: heart-pop .4s var(--ease-spring); }
+  .composer.open .composer-more { animation: rise .3s var(--ease-out); }
+  #view.entering .post-list > * { animation: rise .5s var(--ease-out) both; }
+  #view.entering .post-list > *:nth-child(2) { animation-delay: .06s; }
+  #view.entering .post-list > *:nth-child(3) { animation-delay: .12s; }
+  #view.entering .post-list > *:nth-child(n+4) { animation-delay: .18s; }
+}

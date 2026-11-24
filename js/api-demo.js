@@ -98,6 +98,7 @@
 
     seedPerfumeReviews(db, P);
     seedEvents(db);
+    seedCommunity(db);
     db.threads = []; db.messages = []; db.threadReads = [];
 
     // Something for the admin page to show.
@@ -122,6 +123,31 @@
       "Brooklyn, NY", "Prospect Park, by the Boathouse", inDays(9, 14), 15, ["m-noor"]);
     db.eventComments.push({ id: ++db.seq, event_id: e1, user_id: "m-noor", body: "I'll bring Another 13 and some musks to try!", created_at: daysAgo(1) });
     ev("m-elodie", "CA", "Café decant meetup", "Cozy afternoon: share decants, talk perfume.", "Montréal, QC", "Café Olimpico, Rue Saint-Viateur", inDays(12, 15), 8, []);
+  }
+
+  // Pretend friends and posts (same rules as migration 023).
+  function seedCommunity(db) {
+    db.friendships = []; db.posts = []; db.postLikes = []; db.postComments = [];
+    const pair = (x, y) => (x < y ? [x, y] : [y, x]);
+    const friend = (x, y, status, by, d) => { const [a, b] = pair(x, y); db.friendships.push({ user_a: a, user_b: b, requested_by: by || x, status, created_at: daysAgo(d + 1), accepted_at: status === "accepted" ? daysAgo(d) : null }); };
+    friend("m-margaux", "m-theo", "accepted", "m-margaux", 20);
+    friend("m-margaux", "m-noor", "accepted", "m-noor", 12);
+    friend("m-theo", "m-ravi", "accepted", "m-theo", 8);
+    friend("m-june", "m-margaux", "pending", "m-june", 1);
+    const P = (b, n) => db.perfumes.find((p) => p.brand === b && p.name === n)?.id || null;
+    const hoursAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+    const post = (author_id, kind, body, perfume_id, h, likes = [], comments = []) => {
+      const id = ++db.seq;
+      db.posts.push({ id, author_id, country_code: db.profiles.find((p) => p.id === author_id)?.country_code || "US", kind, body, perfume_id, photo_url: null, is_hidden: false, created_at: hoursAgo(h) });
+      likes.forEach((u) => db.postLikes.push({ post_id: id, user_id: u, created_at: hoursAgo(h - 0.5) }));
+      comments.forEach(([u, text], k) => db.postComments.push({ id: ++db.seq, post_id: id, user_id: u, body: text, created_at: hoursAgo(h - 1 - k) }));
+    };
+    post("m-theo", "sotd", "Rainy Monday, so obviously Santal 33. Smells like a cozy cabin and an old leather jacket.", P("Le Labo", "Santal 33"), 3, ["m-margaux", "m-noor"], [["m-margaux", "The perfect rain scent. Enjoy!"]]);
+    post("m-noor", "discovery", "Just tried a sample of Blanche from a swap and I'm obsessed. Clean laundry in the best way. Who else loves it?", P("Byredo", "Blanche"), 9, ["m-margaux", "m-june", "m-ravi"], [["m-june", "On my wishlist now 😍"], ["m-margaux", "A classic for a reason."]]);
+    post("m-june", "question", "Trying to branch out from gourmands into greens. What's a good first green perfume to sample?", null, 20, ["m-noor"], [["m-theo", "Try something with fig leaf: still a little sweet, but green."]]);
+    post("m-ravi", "haul", "Three new decants arrived today from a swap. Packed so well! Office scents sorted for the month.", P("Creed", "Silver Mountain Water"), 30, ["m-theo"]);
+    post("m-margaux", "thoughts", "Reminder: you never need a full bottle to fall in love. A 2 ml sample tells you everything. Swap small, smell more! 💐", null, 50, ["m-noor", "m-theo", "m-june"]);
+    post("m-elodie", "sotd", "Tea notes on a cold Montréal morning ☕", null, 6, []);
   }
 
   // Perfumer ("nose") names from js/catalog/perfumers.js, keyed "Brand|Name".
@@ -197,6 +223,7 @@
     if (!db.events) { seedEvents(db); changed = true; }
     if (!db.countryRequests) { db.countryRequests = []; changed = true; }
     if (!db.threads) { db.threads = []; db.messages = []; db.threadReads = []; changed = true; }
+    if (!db.posts) { seedCommunity(db); changed = true; }
     const have = new Set(db.perfumes.map((p) => Util.perfumeKey(p.brand, p.name, p.concentration)));
     window.CATALOG_SEED.forEach((row) => {
       if (have.has(Util.perfumeKey(row[0], row[1], row[2]))) return;
@@ -265,6 +292,14 @@
   const myThread = (id) => db.threads.find((x) => x.id === Number(id) && [x.user_a, x.user_b].includes(uid)) || fail("Conversation not found.");
   const setRead = (threadId) => { const r = db.threadReads.find((x) => x.thread_id === threadId && x.user_id === uid); if (r) r.last_read_at = now(); else db.threadReads.push({ thread_id: threadId, user_id: uid, last_read_at: now() }); };
   const canSeeEvent = (e) => !!uid && (e.organizer_id === uid || isAdmin() || (!prof(uid)?.is_banned && !e.is_hidden && !blockedWith(e.organizer_id)));
+  const friendRow = (other) => db.friendships.find((f) => (f.user_a === uid && f.user_b === other) || (f.user_b === uid && f.user_a === other));
+  const canSeePost = (p) => !!uid && (p.author_id === uid || isAdmin() || (!prof(uid)?.is_banned && !p.is_hidden && !blockedWith(p.author_id) && p.country_code === ccOf(uid)));
+  const withPost = (p) => {
+    const likes = db.postLikes.filter((x) => x.post_id === p.id);
+    const pf = perf(p.perfume_id);
+    return { ...clone(p), author: lite(p.author_id), perfume: pf ? { id: pf.id, brand: pf.brand, name: pf.name, concentration: pf.concentration, family: pf.family } : null,
+      like_count: likes.length, liked: likes.some((x) => x.user_id === uid), comment_count: db.postComments.filter((c) => c.post_id === p.id && !blockedWith(c.user_id)).length };
+  };
   const canSeeItem = (i) => i.owner_id === uid || ((!i.is_hidden || isAdmin()) && !blockedWith(i.owner_id));
   const withItem = (i) => ({ ...clone(i), perfume: clone(perf(i.perfume_id)), owner: lite(i.owner_id) });
   const withWish = (w) => ({ ...clone(w), perfume: clone(perf(w.perfume_id)), user: lite(w.user_id) });
@@ -345,6 +380,7 @@
       if (!prof(userId)) fail("Member not found.");
       if (!db.blocks.some((b) => b.blocker_id === uid && b.blocked_id === userId)) db.blocks.push({ blocker_id: uid, blocked_id: userId, created_at: now() });
       db.swaps.forEach((s) => { if (s.status === "proposed" && ((s.proposer_id === uid && s.recipient_id === userId) || (s.proposer_id === userId && s.recipient_id === uid))) { s.status = "cancelled"; s.updated_at = now(); } });
+      db.friendships = db.friendships.filter((f) => !([f.user_a, f.user_b].includes(uid) && [f.user_a, f.user_b].includes(userId)));
       save();
     },
     async unblockUser(userId) { me(); db.blocks = db.blocks.filter((b) => !(b.blocker_id === uid && b.blocked_id === userId)); save(); },
@@ -378,6 +414,11 @@
       db.events = db.events.filter((e) => !theirEvents.has(e.id));
       db.eventAttendees = db.eventAttendees.filter((x) => x.user_id !== v && !theirEvents.has(x.event_id));
       db.eventComments = db.eventComments.filter((x) => x.user_id !== v && !theirEvents.has(x.event_id));
+      db.friendships = db.friendships.filter((f) => f.user_a !== v && f.user_b !== v);
+      const theirPosts = new Set(db.posts.filter((p) => p.author_id === v).map((p) => p.id));
+      db.posts = db.posts.filter((p) => !theirPosts.has(p.id));
+      db.postLikes = db.postLikes.filter((x) => x.user_id !== v && !theirPosts.has(x.post_id));
+      db.postComments = db.postComments.filter((x) => x.user_id !== v && !theirPosts.has(x.post_id));
       db.noteSuggestions = db.noteSuggestions.filter((n) => n.suggested_by !== v);
       db.photoSuggestions = db.photoSuggestions.filter((n) => n.suggested_by !== v || n.status === "approved");
       db.reports = db.reports.filter((r) => r.reporter_id !== v && r.target_user_id !== v);
@@ -739,10 +780,11 @@
       return out;
     },
 
-    async report({ targetUserId, targetItemId, targetPerfumeReviewId, reason }) {
+    async report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, reason }) {
       me();
       if (String(reason || "").trim().length < 3) fail("Please say briefly what is wrong.");
-      db.reports.push({ id: ++db.seq, reporter_id: uid, target_user_id: targetUserId || null, target_item_id: targetItemId ? Number(targetItemId) : null, target_perfume_review_id: targetPerfumeReviewId ? Number(targetPerfumeReviewId) : null, reason: reason.trim().slice(0, 1000), status: "open", created_at: now() });
+      db.reports.push({ id: ++db.seq, reporter_id: uid, target_user_id: targetUserId || null, target_item_id: targetItemId ? Number(targetItemId) : null, target_perfume_review_id: targetPerfumeReviewId ? Number(targetPerfumeReviewId) : null,
+        target_post_id: targetPostId ? Number(targetPostId) : null, target_post_comment_id: targetPostCommentId ? Number(targetPostCommentId) : null, reason: reason.trim().slice(0, 1000), status: "open", created_at: now() });
       save();
     },
 
@@ -972,7 +1014,10 @@
       return db.reports.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).map((r) => {
         const it = r.target_item_id && db.items.find((i) => i.id === r.target_item_id);
         const pr = r.target_perfume_review_id && db.perfumeReviews.find((x) => x.id === r.target_perfume_review_id);
+        const po = r.target_post_id && db.posts.find((x) => x.id === r.target_post_id);
+        const pc = r.target_post_comment_id && db.postComments.find((x) => x.id === r.target_post_comment_id);
         return { ...clone(r), reporter: lite(r.reporter_id), target_user: lite(r.target_user_id), target_item: it ? withItem(it) : null,
+          target_post: po ? clone(po) : null, target_post_comment: pc ? clone(pc) : null,
           target_perfume_review: pr ? { ...clone(pr), perfume: clone(perf(pr.perfume_id)), author: lite(pr.user_id) } : null };
       });
     },
@@ -1075,6 +1120,102 @@
       db.eventComments = db.eventComments.filter((x) => x !== c); save();
     },
     async setEventHidden(id, hidden) { adminOnly(); const e = db.events.find((x) => x.id === Number(id)); if (e) { e.is_hidden = !!hidden; save(); } },
+
+    // ---- Community: friends (migration 023) ----
+    async listFriendships() {
+      me();
+      return db.friendships.filter((f) => [f.user_a, f.user_b].includes(uid)).map((f) => {
+        const o = f.user_a === uid ? f.user_b : f.user_a;
+        return { other: lite(o), other_id: o, status: f.status === "accepted" ? "friends" : f.requested_by === uid ? "sent" : "received", since: f.accepted_at || f.created_at };
+      }).filter((r) => r.other);
+    },
+    async friendStatus(userId) {
+      me(); if (userId === uid) return "me";
+      const f = friendRow(userId);
+      return !f ? "none" : f.status === "accepted" ? "friends" : f.requested_by === uid ? "sent" : "received";
+    },
+    async sendFriendRequest(userId) {
+      active(); await tick();
+      if (userId === uid) fail("You cannot add yourself.");
+      const o = prof(userId); if (!o || o.is_banned) fail("Member not found.");
+      if (blockedWith(userId)) fail("You cannot add this member.");
+      if (ccOf(userId) !== ccOf(uid)) fail("Friends are only between members in the same country.");
+      const f = friendRow(userId);
+      if (f) {
+        if (f.status === "accepted") return "friends";
+        if (f.requested_by === uid) return "sent";
+        f.status = "accepted"; f.accepted_at = now(); save(); return "friends";
+      }
+      if (db.friendships.filter((x) => x.requested_by === uid && x.created_at > new Date(Date.now() - 864e5).toISOString()).length >= 40) fail("That's a lot of friend requests today. Please try again tomorrow.");
+      const [a, b] = uid < userId ? [uid, userId] : [userId, uid];
+      db.friendships.push({ user_a: a, user_b: b, requested_by: uid, status: "pending", created_at: now(), accepted_at: null }); save(); return "sent";
+    },
+    async respondFriendRequest(userId, accept) {
+      me(); const f = friendRow(userId);
+      if (!f || f.status !== "pending" || f.requested_by !== userId) { if (accept) fail("That request is no longer open."); return; }
+      if (accept) { active(); f.status = "accepted"; f.accepted_at = now(); } else db.friendships = db.friendships.filter((x) => x !== f);
+      save();
+    },
+    async removeFriend(userId) { me(); const f = friendRow(userId); if (f) { db.friendships = db.friendships.filter((x) => x !== f); save(); } },
+
+    // ---- Community: posts ----
+    async listPosts({ scope = "discover", authorId, limit = 40 } = {}) {
+      me(); await tick();
+      const fr = new Set(db.friendships.filter((f) => f.status === "accepted" && [f.user_a, f.user_b].includes(uid)).map((f) => (f.user_a === uid ? f.user_b : f.user_a)));
+      return db.posts.filter((p) => canSeePost(p) && !prof(p.author_id)?.is_banned
+          && (authorId ? p.author_id === authorId : scope === "feed" ? (p.author_id === uid || fr.has(p.author_id)) : p.country_code === ccOf(uid)))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit).map(withPost);
+    },
+    async getPost(id) {
+      me(); const p = db.posts.find((x) => x.id === Number(id));
+      if (!p || !canSeePost(p)) return null;
+      const comments = db.postComments.filter((c) => c.post_id === p.id && !blockedWith(c.user_id)).sort((a, b) => a.created_at.localeCompare(b.created_at)).map((c) => ({ ...clone(c), user: lite(c.user_id) }));
+      return { ...withPost(p), comments, comment_count: comments.length };
+    },
+    async createPost({ kind, body, perfumeId, photoFile }) {
+      active(); await tick();
+      body = String(body || "").trim(); if (!body) fail("Write something first.");
+      if (!["sotd", "discovery", "haul", "question", "thoughts"].includes(kind)) fail("Pick what kind of post this is.");
+      if (perfumeId && !perf(Number(perfumeId))) fail("Pick a perfume from the catalog.");
+      if (db.posts.filter((p) => p.author_id === uid && p.created_at > new Date(Date.now() - 864e5).toISOString()).length >= 20) fail("You've posted a lot today. Please come back tomorrow.");
+      const photo_url = photoFile ? (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl : null;
+      const p = { id: ++db.seq, author_id: uid, country_code: ccOf(uid), kind, body: body.slice(0, 1000), perfume_id: perfumeId ? Number(perfumeId) : null, photo_url, is_hidden: false, created_at: now() };
+      db.posts.push(p); save(); return p.id;
+    },
+    async deletePost(id) {
+      const p = db.posts.find((x) => x.id === Number(id)); if (!p) return;
+      if (p.author_id !== me() && !isAdmin()) fail("You can only delete your own posts.");
+      db.posts = db.posts.filter((x) => x !== p);
+      db.postLikes = db.postLikes.filter((x) => x.post_id !== p.id); db.postComments = db.postComments.filter((x) => x.post_id !== p.id); save();
+    },
+    async likePost(id, on) {
+      active(); const p = db.posts.find((x) => x.id === Number(id));
+      if (!p || !canSeePost(p)) fail("Post not found.");
+      const mine = (x) => x.post_id === p.id && x.user_id === uid;
+      if (on) { if (!db.postLikes.some(mine)) db.postLikes.push({ post_id: p.id, user_id: uid, created_at: now() }); }
+      else db.postLikes = db.postLikes.filter((x) => !mine(x));
+      save();
+    },
+    async commentPost(id, body) {
+      active(); const p = db.posts.find((x) => x.id === Number(id));
+      if (!p || !canSeePost(p)) fail("Post not found.");
+      body = String(body || "").trim(); if (!body) fail("Write something first.");
+      db.postComments.push({ id: ++db.seq, post_id: p.id, user_id: uid, body: body.slice(0, 600), created_at: now() }); save();
+    },
+    async deletePostComment(id) {
+      const c = db.postComments.find((x) => x.id === Number(id)); if (!c) return;
+      const p = db.posts.find((x) => x.id === c.post_id);
+      if (c.user_id !== me() && p?.author_id !== uid && !isAdmin()) fail("You can only remove your own comments.");
+      db.postComments = db.postComments.filter((x) => x !== c); save();
+    },
+    async setPostHidden(id, hidden) { adminOnly(); const p = db.posts.find((x) => x.id === Number(id)); if (p) { p.is_hidden = !!hidden; save(); } },
+    async trendingWishes() {
+      me();
+      const cut = new Date(Date.now() - 30 * 864e5).toISOString(), counts = new Map();
+      db.wishes.filter((w) => (w.created_at || now()) > cut && ccOf(w.user_id) === ccOf(uid) && !prof(w.user_id)?.is_banned)
+        .forEach((w) => counts.set(w.perfume_id, (counts.get(w.perfume_id) || 0) + 1));
+      return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([pid, n]) => ({ perfume: clone(perf(pid)), wanted: n })).filter((r) => r.perfume);
+    },
 
     // Demo-only helpers (the "Demo tools" panel)
     demoUsers: () => db.profiles.map((p) => ({ id: p.id, display_name: p.display_name, email: db.users.find((u) => u.id === p.id)?.email, is_admin: p.is_admin })),

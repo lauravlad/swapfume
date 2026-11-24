@@ -334,14 +334,14 @@
     });
   }
 
-  function reportDialog({ targetUserId, targetItemId, targetPerfumeReviewId, what, prefill = "" }) {
+  function reportDialog({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, what, prefill = "" }) {
     openModal(html`<form class="dlg" id="repForm"><h3>Report ${what}</h3>
       <p class="muted small">Reports go privately to the admins. The person is not told who reported them.</p>
       <label for="reason">What happened?</label><textarea id="reason" required minlength="3" maxlength="1000" placeholder="e.g. Never shipped, fake bottle, rude messages…">${prefill}</textarea>
       <div class="dlg-actions"><button type="button" class="btn secondary" data-close>Cancel</button><button class="btn" id="repSend">Send report</button></div></form>`,
     (m) => $("#repForm", m).addEventListener("submit", (e) => {
       e.preventDefault();
-      run($("#repSend", m), async () => { await api.report({ targetUserId, targetItemId, targetPerfumeReviewId, reason: $("#reason", m).value }); modal.close(); toast("Thank you. An admin will take a look."); });
+      run($("#repSend", m), async () => { await api.report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, reason: $("#reason", m).value }); modal.close(); toast("Thank you. An admin will take a look."); });
     }));
   }
 
@@ -428,10 +428,12 @@
   async function refreshSwapDot() {
     if (!state.uid) return;
     try {
-      const [swaps, reviewed, unread] = await Promise.all([api.listMySwaps(), myReviewedSet(), api.unreadThreads().catch(() => 0)]);
+      const [swaps, reviewed, unread, fr] = await Promise.all([api.listMySwaps(), myReviewedSet(), api.unreadThreads().catch(() => 0), api.listFriendships?.().catch(() => []) || []]);
       const n = swaps.filter((s) => swapInfo(s, reviewed.has(s.id)).needsMe).length;
       $$("[data-swapdot]").forEach((d) => (d.hidden = !(n || unread)));
       $$("[data-msgdot]").forEach((d) => (d.hidden = !unread));
+      const asks = fr.filter((r) => r.status === "received").length;
+      $$("[data-commdot]").forEach((d) => (d.hidden = !asks));
     } catch (e) { /* not critical */ }
   }
 
@@ -1415,14 +1417,20 @@
     const p = await api.getProfile(id);
     if (!p) return setView(html`<div class="empty"><h3>Member not found</h3></div>`);
     const isMe = id === state.uid;
-    const [items, wishes, reviews, stats, blocks, dist, area] = await Promise.all([api.listItems({ ownerId: id }), api.listWishes({ userId: id }), api.listReviews({ revieweeId: id }), api.getStats([id]), isMe ? [] : api.listBlocks(), isMe ? {} : api.memberDistances([id]).catch(() => ({})), api.memberArea(id).catch(() => null)]);
+    const [items, wishes, reviews, stats, blocks, dist, area, fstat, posts] = await Promise.all([api.listItems({ ownerId: id }), api.listWishes({ userId: id }), api.listReviews({ revieweeId: id }), api.getStats([id]), isMe ? [] : api.listBlocks(), isMe ? {} : api.memberDistances([id]).catch(() => ({})), api.memberArea(id).catch(() => null),
+      isMe ? "me" : api.friendStatus(id).catch(() => "none"), api.listPosts({ authorId: id, limit: 5 }).catch(() => [])]);
     const iBlocked = blocks.some((b) => b.blocked_id === id);
     const shown = isMe ? items : items.filter((i) => i.tradeable);
     const miles = dist[id];
     // Swaps stay inside one country (database rule, migration 016).
     const otherCountry = !isMe && (p.country_code || "US") !== myCC();
     const canSwap = !p.is_banned && !iBlocked && !otherCountry;
-    setView(html`<div class="card"><div class="profile-top"><div class="profile-head">${avatar(p, "lg")}<div><h1>${p.display_name}</h1><div class="muted row" style="gap:8px">${place(p) || "Location not set"} ${distanceBadge(miles)}</div><div style="margin-top:6px">${trust(stats[id])}</div></div></div>
+    const canFriend = !isMe && !p.is_banned && !iBlocked && !otherCountry;
+    const friendBtn = !canFriend ? "" : fstat === "friends" ? html`<button class="btn secondary" id="unfriend">✓ Friends</button>`
+      : fstat === "sent" ? html`<button class="btn secondary" id="unfriend">Request sent · Cancel</button>`
+      : fstat === "received" ? html`<button class="btn" id="addFriend">${ADD_FRIEND}<span>Accept friend request</span></button>`
+      : html`<button class="btn secondary" id="addFriend">${ADD_FRIEND}<span>Add friend</span></button>`;
+    setView(html`<div class="card"><div class="profile-top"><div class="profile-head">${avatar(p, "lg")}<div><h1>${p.display_name}${fstat === "friends" ? html` <span class="friend-tag">Friend</span>` : ""}</h1><div class="muted row" style="gap:8px">${place(p) || "Location not set"} ${distanceBadge(miles)}</div><div style="margin-top:6px">${trust(stats[id])}</div></div></div>
         ${iBlocked ? "" : areaMap(area, p.city)}</div>
         ${!iBlocked && miles != null && miles <= NEAR_MILES ? html`<div class="notice ok" style="margin-top:12px">${PIN} You're about ${distText(miles)} apart. When you propose a swap you can choose <b>Meet in person</b> instead of shipping.</div>` : ""}
         ${p.is_banned ? html`<div class="notice rose" style="margin-top:12px">This account has been suspended.</div>` : ""}
@@ -1430,14 +1438,23 @@
         ${p.bio ? html`<p style="margin-top:14px">${p.bio}</p>` : ""}
         ${!iBlocked && availableText(items) ? html`<p class="small" style="margin-top:10px"><b>Available to swap:</b> ${availableText(items)}</p>` : ""}
         ${iBlocked ? html`<div class="notice" style="margin-top:12px">You blocked ${p.display_name}. You don't see each other's listings or wishlists, and neither of you can propose a swap. They aren't told.</div>` : ""}
-        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${canSwap && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}${canSwap ? html`<a class="btn secondary gift-btn" href="#/gift/${id}">${GIFT_ICON}<span>Give a gift</span></a>` : ""}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}${state.profile?.is_admin && p.avatar_url ? html`<button class="btn ghost" id="clearAvatar">Remove profile photo <span class="pill gold">Admin</span></button>` : ""}`}</div></div>
+        <div class="row" style="margin-top:12px">${isMe ? html`<a class="btn secondary" href="#/me">Edit profile</a>` : html`${canSwap && items.some((i) => i.tradeable) ? html`<a class="btn" href="#/propose/${id}">Propose a swap</a>` : ""}${canSwap ? html`<a class="btn secondary gift-btn" href="#/gift/${id}">${GIFT_ICON}<span>Give a gift</span></a>` : ""}${friendBtn}<button class="btn ghost" id="repUser">Report</button>${iBlocked ? html`<button class="btn ghost" id="unblockUser">Unblock</button>` : html`<button class="btn ghost" id="blockUser">Block</button>`}${state.profile?.is_admin && p.avatar_url ? html`<button class="btn ghost" id="clearAvatar">Remove profile photo <span class="pill gold">Admin</span></button>` : ""}`}</div></div>
       ${iBlocked ? "" : html`<h2>${isMe ? "Collection" : "Open to trade"}</h2>
       ${shown.length ? html`<div class="grid">${shown.map((i) => html`<div>${itemTile(i)}${isMe ? "" : html`<button class="btn small ghost" data-repitem="${i.id}" style="margin-top:4px">Report listing</button>`}</div>`)}</div>` : html`<p class="muted">Nothing listed for trade right now.</p>`}
       <h2>Wishlist</h2>
-      ${wishes.length ? html`<div class="row">${wishes.map((w) => html`<a class="pill" href="#/perfume/${w.perfume.id}">${pTitle(w.perfume)}</a>`)}</div>` : html`<p class="muted">Empty.</p>`}`}
+      ${wishes.length ? html`<div class="row">${wishes.map((w) => html`<a class="pill" href="#/perfume/${w.perfume.id}">${pTitle(w.perfume)}</a>`)}</div>` : html`<p class="muted">Empty.</p>`}
+      ${posts.length ? html`<h2>Recent posts</h2><div class="post-list" id="posts">${posts.map((x) => postCard(x))}</div>` : ""}`}
       <h2>Reviews</h2>
       ${reviews.length ? html`<ul class="list card">${reviews.map((r) => html`<li><div class="row between"><span class="stars" aria-label="${r.rating} out of 5 stars">${starsText(r.rating)}</span><span class="small muted">${r.reviewer?.display_name || "Former member"} · ${fmtDate(r.created_at)}</span></div>${r.comment ? html`<p style="margin:4px 0 0">${r.comment}</p>` : ""}</li>`)}</ul>` : html`<p class="muted">No reviews yet. Reviews can only be left by swap partners after a completed swap.</p>`}`);
     const ru = $("#repUser"); if (ru) ru.addEventListener("click", () => reportDialog({ targetUserId: id, what: p.display_name }));
+    if ($("#posts")) bindPosts($("#posts"));
+    const af = $("#addFriend");
+    if (af) af.addEventListener("click", () => run(af, async () => { const r = await api.sendFriendRequest(id); toast(r === "friends" ? `You and ${p.display_name} are now friends! 🎉` : "Friend request sent."); route(); refreshSwapDot(); }));
+    const uf = $("#unfriend");
+    if (uf) uf.addEventListener("click", async () => {
+      if (fstat === "friends" && !(await confirmBox(`Remove ${p.display_name} as a friend?`, "You'll stop seeing each other's posts in your Feeds. They aren't told.", "Remove"))) return;
+      run(uf, async () => { await api.removeFriend(id); route(); });
+    });
     const ca = $("#clearAvatar");
     if (ca) ca.addEventListener("click", async () => { if (await confirmBox(`Remove ${p.display_name}'s profile photo?`, "Use this for photos that break the rules. They can upload a new one.", "Remove")) run(null, async () => { await api.adminClearAvatar(id); toast("Profile photo removed."); route(); }); });
     const bu = $("#blockUser");
@@ -1880,13 +1897,19 @@
           <p style="margin:8px 0">${r.reason}</p>
           <div class="small">About: ${r.target_user ? html`<a href="#/u/${r.target_user.id}">${r.target_user.display_name}</a>${r.target_user.is_banned ? " (banned)" : ""}` : "—"}${r.target_item ? html` · listing: ${pTitle(r.target_item.perfume)}${r.target_item.is_hidden ? " (hidden)" : ""}` : ""}</div>
           ${r.target_perfume_review ? html`<div class="notice" style="margin-top:6px"><div class="small">Review of <a href="#/perfume/${r.target_perfume_review.perfume_id}">${pTitle(r.target_perfume_review.perfume)}</a> by ${r.target_perfume_review.author?.display_name || "Former member"}${r.target_perfume_review.is_hidden ? " (hidden)" : ""}</div><div><span class="stars">${starsText(r.target_perfume_review.rating)}</span> ${r.target_perfume_review.body}</div></div>` : ""}
+          ${r.target_post ? html`<div class="notice" style="margin-top:6px"><div class="small"><a href="#/post/${r.target_post.id}">Post</a>${r.target_post.is_hidden ? " (hidden)" : ""}</div><div>${r.target_post.body.slice(0, 400)}</div></div>` : ""}
+          ${r.target_post_comment ? html`<div class="notice" style="margin-top:6px"><div class="small">Comment on <a href="#/post/${r.target_post_comment.post_id}">a post</a></div><div>${r.target_post_comment.body}</div></div>` : ""}
           <div class="row" style="margin-top:8px">${r.status === "open" ? html`<button class="btn small secondary" data-res="${r.id}">Mark resolved</button>` : ""}
+            ${r.target_post ? html`<button class="btn small secondary" data-hidep="${r.target_post.id}" data-h="${!r.target_post.is_hidden}">${r.target_post.is_hidden ? "Unhide post" : "Hide post"}</button>` : ""}
+            ${r.target_post_comment ? html`<button class="btn small secondary" data-delpc="${r.target_post_comment.id}">Delete comment</button>` : ""}
             ${r.target_perfume_review ? html`<button class="btn small secondary" data-hider="${r.target_perfume_review.id}" data-h="${!r.target_perfume_review.is_hidden}">${r.target_perfume_review.is_hidden ? "Unhide review" : "Hide review"}</button>` : ""}
             ${r.target_item ? html`<button class="btn small secondary" data-hide="${r.target_item.id}" data-h="${!r.target_item.is_hidden}">${r.target_item.is_hidden ? "Unhide listing" : "Hide listing"}</button>` : ""}
             ${r.target_user && r.target_user.id !== state.uid ? html`<button class="btn small danger" data-ban="${r.target_user.id}" data-b="${!r.target_user.is_banned}">${r.target_user.is_banned ? "Unban" : "Ban"} ${r.target_user.display_name}</button>` : ""}</div></li>`)}</ul>` : html`<div class="empty"><p>No reports. Lovely.</p></div>`);
       $$("[data-res]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.resolveReport(b.dataset.res); route(); })));
       $$("[data-hide]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setItemHidden(b.dataset.hide, b.dataset.h === "true"); route(); })));
       $$("[data-hider]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setPerfumeReviewHidden(b.dataset.hider, b.dataset.h === "true"); route(); })));
+      $$("[data-hidep]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setPostHidden(b.dataset.hidep, b.dataset.h === "true"); route(); })));
+      $$("[data-delpc]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deletePostComment(b.dataset.delpc); toast("Comment deleted."); route(); })));
     } else if (tab === "photos") {
       const rows = await api.listPhotoSuggestions();
       ab.innerHTML = val(rows.length ? html`<p class="muted small">Approve only real photos of the bottle — no shop or brand pictures, no people or personal details. Approving replaces the perfume's current picture.</p>
@@ -1935,14 +1958,202 @@
           ${e.status === "cancelled" ? html`<span class="pill warn">Cancelled</span>` : ""}${e.is_hidden ? html`<span class="pill warn">Hidden by admin</span>` : ""}</div></div></a>`;
   }
 
+  // ======================================================================
+  // COMMUNITY (migration 023): Feed, Discover, Friends, Meetups
+  // ======================================================================
+  function communityTabs(active) {
+    const t = (key, href, label) => html`<a role="tab" class="tablink" href="${href}" aria-selected="${active === key}">${label}</a>`;
+    return html`<div class="tabs" role="tablist">${t("feed", "#/community", "Feed")}${t("discover", "#/discover", "Discover")}${t("friends", "#/friends", raw(`Friends<span class="dot" data-commdot hidden></span>`))}${t("meetups", "#/meetups", "Meetups")}</div>`;
+  }
+  const POST_KINDS = { sotd: ["Scent of the day", "rose"], discovery: ["New discovery", "teal"], haul: ["Haul", "gold"], question: ["Question", "ok"], thoughts: ["Thoughts", "grey"] };
+  const HEART = raw(`<svg class="ico-inline heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>`);
+  const ADD_FRIEND = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19.5a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`);
+  function ago(d) {
+    const s = (Date.now() - new Date(d)) / 1000;
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h`;
+    if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`;
+    return fmtDate(d);
+  }
+  // friends: Map(userId -> "friends" | "sent" | "received"); shows "Add friend" next to strangers.
+  function postCard(p, { friends = null, full = false } = {}) {
+    const a = p.author, mine = p.author_id === state.uid, [kindLabel, kindCls] = POST_KINDS[p.kind] || POST_KINDS.thoughts;
+    const fs = friends && !mine ? friends.get(p.author_id) || "none" : null;
+    return html`<article class="post card ${p.is_hidden ? "is-hidden" : ""}" data-post="${p.id}">
+      <header class="post-head">${avatar(a)}<div class="grow"><a class="post-name" href="#/u/${p.author_id}">${a?.display_name || "Former member"}</a>
+        <div class="small muted"><time datetime="${p.created_at}" title="${fmtTime(p.created_at)}">${ago(p.created_at)}</time>${a?.city ? html` · ${a.city}` : ""}${fs === "friends" ? html` · <span class="friend-tag">Friend</span>` : ""}</div></div>
+        <span class="pill ${kindCls}">${kindLabel}</span></header>
+      ${p.is_hidden ? html`<div class="notice small">Hidden by an admin. Only you and the admins can see this post.</div>` : ""}
+      <p class="post-body">${full || p.body.length <= 320 ? p.body : html`${p.body.slice(0, 300).trimEnd()}… <a href="#/post/${p.id}">more</a>`}</p>
+      ${p.photo_url ? html`<a class="post-photo" href="#/post/${p.id}"><img src="${p.photo_url}" alt="Photo shared by ${a?.display_name || "a member"}" loading="lazy"></a>` : ""}
+      ${p.perfume ? html`<a class="post-perfume" href="#/perfume/${p.perfume.id}" style="--tint:${tint(p.perfume)}"><span class="fam-dot" aria-hidden="true"></span><span><b>${p.perfume.name}</b> <span class="muted">${p.perfume.brand}</span></span></a>` : ""}
+      <footer class="post-actions">
+        <button type="button" class="post-act like ${p.liked ? "on" : ""}" data-like="${p.id}" aria-pressed="${p.liked ? "true" : "false"}" aria-label="${p.liked ? "Unlike" : "Like"} (${p.like_count} likes)">${HEART}<span data-likes>${p.like_count || ""}</span></button>
+        <a class="post-act" href="#/post/${p.id}" aria-label="Comments (${p.comment_count})">${CHAT_ICON}<span>${p.comment_count || ""}</span></a>
+        ${fs === "none" ? html`<button type="button" class="post-act add" data-addfriend="${p.author_id}">${ADD_FRIEND}<span>Add friend</span></button>` : fs === "sent" ? html`<span class="post-act small muted">Request sent</span>` : ""}
+        <span class="grow"></span>
+        ${mine || state.profile?.is_admin ? html`<button type="button" class="post-act small" data-delpost="${p.id}">Delete</button>` : ""}
+        ${state.profile?.is_admin && !mine ? html`<button type="button" class="post-act small" data-hidepost="${p.id}" data-h="${!p.is_hidden}">${p.is_hidden ? "Unhide" : "Hide"}</button>` : ""}
+        ${mine ? "" : html`<button type="button" class="post-act small" data-reppost="${p.id}" data-author="${p.author_id}">Report</button>`}
+      </footer></article>`;
+  }
+  // One set of handlers for every post card inside root. after(): what to do after a delete/hide.
+  function bindPosts(root, after = () => route()) {
+    root.addEventListener("click", (e) => {
+      const like = e.target.closest("[data-like]");
+      if (like) {
+        const on = like.getAttribute("aria-pressed") !== "true", n = $("[data-likes]", like), count = Math.max(0, (+n.textContent || 0) + (on ? 1 : -1));
+        like.setAttribute("aria-pressed", String(on)); like.classList.toggle("on", on); n.textContent = count || "";
+        like.setAttribute("aria-label", `${on ? "Unlike" : "Like"} (${count} likes)`);
+        api.likePost(like.dataset.like, on).catch((err) => { toast(err.message, "error"); after(); });
+        return;
+      }
+      const add = e.target.closest("[data-addfriend]");
+      if (add) return run(add, async () => { const r = await api.sendFriendRequest(add.dataset.addfriend); toast(r === "friends" ? "You're now friends! 🎉" : "Friend request sent."); refreshSwapDot(); after(); });
+      const del = e.target.closest("[data-delpost]");
+      if (del) return confirmBox("Delete this post?", "It disappears for everyone, with its likes and comments.", "Delete").then((ok) => ok && run(del, async () => { await api.deletePost(del.dataset.delpost); toast("Post deleted."); after(); }));
+      const hide = e.target.closest("[data-hidepost]");
+      if (hide) return run(hide, async () => { await api.setPostHidden(hide.dataset.hidepost, hide.dataset.h === "true"); toast(hide.dataset.h === "true" ? "Post hidden." : "Post visible again."); after(); });
+      const rep = e.target.closest("[data-reppost]");
+      if (rep) reportDialog({ targetUserId: rep.dataset.author, targetPostId: rep.dataset.reppost, what: "this post" });
+    });
+  }
+  async function friendMap() {
+    const rows = await api.listFriendships().catch(() => []);
+    return new Map(rows.map((r) => [r.other_id, r.status]));
+  }
+  function composer() {
+    return html`<form class="card composer" id="composer">
+      <div class="composer-top">${avatar(state.profile)}<label for="postBody" class="visually-hidden">Write a post</label>
+        <textarea id="postBody" name="body" rows="2" maxlength="1000" required placeholder="What are you wearing today, ${state.profile?.display_name || ""}?"></textarea></div>
+      <div class="composer-more" id="composerMore">
+        <div class="seg kinds" role="radiogroup" aria-label="Kind of post">${Object.entries(POST_KINDS).map(([k, [l]], i) => html`<label><input type="radio" name="kind" value="${k}" class="visually-hidden" ${i === 0 ? raw("checked") : ""}>${l}</label>`)}</div>
+        <div class="composer-perfume"><div id="postPerfumePick"></div><div id="postPerfume" class="row" hidden></div></div>
+        ${photoPicker("photo", null)}
+        <p class="hint" id="postWarn" hidden>Keep it on Swapfume: don't share emails, phone numbers or payment apps. Swapfume never involves money.</p>
+        <div class="row between"><span class="small muted">Seen by members in ${myCountry().the}.</span><button class="btn" id="postSend">Post</button></div>
+      </div></form>`;
+  }
+  function bindComposer(done) {
+    const f = $("#composer"); if (!f) return;
+    let perfume = null;
+    const body = $("#postBody", f), more = $("#composerMore", f);
+    const open = () => f.classList.add("open");
+    body.addEventListener("focus", open);
+    body.addEventListener("input", () => { $("#postWarn", f).hidden = !looksPrivate(body.value); });
+    const showPerfume = () => {
+      const box = $("#postPerfume", f);
+      box.hidden = !perfume; $("#postPerfumePick", f).hidden = !!perfume;
+      box.innerHTML = perfume ? val(html`<span class="post-perfume static" style="--tint:${tint(perfume)}"><span class="fam-dot" aria-hidden="true"></span><span><b>${perfume.name}</b> <span class="muted">${perfume.brand}</span></span></span><button type="button" class="btn small ghost" id="ppClear">Remove</button>`) : "";
+      if (perfume) $("#ppClear", f).addEventListener("click", () => { perfume = null; showPerfume(); });
+    };
+    perfumePicker($("#postPerfumePick", f), (p) => { perfume = p; showPerfume(); }, { placeholder: "Tag a perfume (optional)" });
+    bindPhotoPicker(more);
+    f.addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#postSend", f), async () => {
+        const fd = new FormData(f), photo = fd.get("photo");
+        await api.createPost({ kind: fd.get("kind"), body: body.value, perfumeId: perfume?.id, photoFile: photo && photo.size ? photo : null });
+        toast("Posted! ✨"); done();
+      });
+    });
+  }
+
+  async function pageCommunity() {
+    const [posts, friends] = await Promise.all([api.listPosts({ scope: "feed" }), friendMap()]);
+    const asks = [...friends.values()].filter((s) => s === "received").length, nFriends = [...friends.values()].filter((s) => s === "friends").length;
+    setView(html`<div class="page-head"><div class="eyebrow">Sharing is caring</div><h1>Community</h1><p>Your friends' scents of the day, discoveries and questions.</p></div>
+      ${communityTabs("feed")}
+      ${asks ? html`<a class="notice rose friend-ask" href="#/friends">${ADD_FRIEND} <span>You have <b>${asks}</b> friend request${asks > 1 ? "s" : ""} waiting.</span> <span class="grow"></span><span aria-hidden="true">›</span></a>` : ""}
+      ${composer()}
+      <div class="post-list" id="posts">${posts.length ? posts.map((p) => postCard(p, { friends }))
+        : html`<div class="empty"><h3>Your feed is quiet</h3><p>${nFriends ? "Your friends haven't posted yet. Say hi with a post of your own!" : "Add some friends and their posts show up here. Find people on Discover."}</p><a class="btn secondary" href="#/discover">Go to Discover</a></div>`}</div>`);
+    bindComposer(() => route());
+    bindPosts($("#posts"));
+  }
+
+  async function pageDiscover() {
+    const [posts, friends, wanted, fresh] = await Promise.all([api.listPosts({ scope: "discover" }), friendMap(), api.trendingWishes().catch(() => []),
+      api.listItems({ tradeableOnly: true, excludeOwnerId: state.uid, country: myCC(), limit: 4 }).catch(() => [])]);
+    setView(html`<div class="page-head"><div class="eyebrow">Sharing is caring</div><h1>Discover</h1><p>What perfume lovers in ${myCountry().the} are wearing, wanting and sharing.</p></div>
+      ${communityTabs("discover")}
+      ${wanted.length ? html`<section class="disc-section"><h2>Most wanted lately</h2>
+        <div class="chip-scroll">${wanted.map((w) => html`<a class="post-perfume" href="#/perfume/${w.perfume.id}" style="--tint:${tint(w.perfume)}"><span class="fam-dot" aria-hidden="true"></span><span><b>${w.perfume.name}</b> <span class="muted">${w.perfume.brand}</span></span><span class="pill grey" title="Added to ${w.wanted} wishlist${w.wanted > 1 ? "s" : ""}">♥ ${w.wanted}</span></a>`)}</div></section>` : ""}
+      ${fresh.length ? html`<section class="disc-section"><div class="row between"><h2>Just listed</h2><a href="#/browse" class="small">See all trades ›</a></div>
+        <div class="grid">${fresh.map((i) => itemTile(i, { owner: true }))}</div></section>` : ""}
+      <section class="disc-section"><h2>Posts from the community</h2>
+      <div class="post-list" id="posts">${posts.length ? posts.map((p) => postCard(p, { friends }))
+        : html`<div class="empty"><h3>No posts yet</h3><p>Be the first! Share your scent of the day on the Feed.</p><a class="btn" href="#/community">Write a post</a></div>`}</div></section>`);
+    bindPosts($("#posts"));
+  }
+
+  async function pageFriends() {
+    const rows = await api.listFriendships();
+    const by = (s) => rows.filter((r) => r.status === s).sort((a, b) => (a.other.display_name || "").localeCompare(b.other.display_name || ""));
+    const received = by("received"), sent = by("sent"), friends = by("friends");
+    const who = (r, actions) => html`<li class="friend-row">${avatar(r.other)}<div class="grow"><a href="#/u/${r.other_id}"><b>${r.other.display_name}</b></a><div class="small muted">${r.other.city || r.other.country || ""}</div></div><div class="row" style="gap:6px">${actions}</div></li>`;
+    setView(html`<div class="page-head"><div class="eyebrow">Sharing is caring</div><h1>Friends</h1><p>Friends see each other's posts in their Feed. Only you can see your friends list.</p></div>
+      ${communityTabs("friends")}
+      ${received.length ? html`<h2>Friend requests</h2><ul class="list card">${received.map((r) => who(r, html`<button class="btn small" data-accept="${r.other_id}">Accept</button><button class="btn small secondary" data-decline="${r.other_id}">Decline</button>`))}</ul>` : ""}
+      <h2>Your friends ${friends.length ? html`<span class="muted small">(${friends.length})</span>` : ""}</h2>
+      ${friends.length ? html`<ul class="list card">${friends.map((r) => who(r, html`<button class="btn small ghost" data-unfriend="${r.other_id}" data-name="${r.other.display_name}">Remove</button>`))}</ul>`
+        : html`<div class="empty"><p>No friends yet. Tap <b>Add friend</b> on a post in Discover or on someone's profile.</p><a class="btn secondary" href="#/discover">Go to Discover</a></div>`}
+      ${sent.length ? html`<h2>Requests you sent</h2><ul class="list card">${sent.map((r) => who(r, html`<button class="btn small ghost" data-unfriend="${r.other_id}">Cancel request</button>`))}</ul>` : ""}
+      <form class="card find-member" id="fmForm" role="search" style="margin-top:24px">
+        <h3 style="margin-top:0">Find someone you know</h3>
+        <p class="small muted" style="margin-top:0">Type their full display name.</p>
+        <div class="row" style="flex-wrap:nowrap"><input id="fmName" type="search" minlength="2" maxlength="40" required placeholder="Their display name" aria-label="Member's display name" style="flex:1"><button class="btn" id="fmGo">Find</button></div>
+        <div id="fmOut" aria-live="polite"></div></form>`);
+    $$("[data-accept]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.respondFriendRequest(b.dataset.accept, true); toast("You're now friends! 🎉"); route(); refreshSwapDot(); })));
+    $$("[data-decline]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.respondFriendRequest(b.dataset.decline, false); toast("Request declined. They aren't told."); route(); refreshSwapDot(); })));
+    $$("[data-unfriend]").forEach((b) => b.addEventListener("click", async () => {
+      if (b.dataset.name && !(await confirmBox(`Remove ${b.dataset.name} as a friend?`, "You'll stop seeing each other's posts in your Feeds. They aren't told.", "Remove"))) return;
+      run(b, async () => { await api.removeFriend(b.dataset.unfriend); route(); });
+    }));
+    $("#fmForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#fmGo"), async () => {
+        const found = await api.findMembers($("#fmName").value);
+        $("#fmOut").innerHTML = val(found.length ? html`<ul class="list" style="margin-top:12px">${found.map((m) => html`<li><a class="row" style="gap:10px;align-items:center;text-decoration:none;color:inherit" href="#/u/${m.id}">${avatar(m)}<span><b>${m.display_name}</b>${place(m) ? html` <span class="small muted">· ${place(m)}</span>` : ""}</span></a></li>`)}</ul>`
+          : html`<p class="small muted" style="margin:12px 0 0">No member with that exact name. Check the spelling: it has to be their full display name.</p>`);
+      });
+    });
+  }
+
+  async function pagePost(id) {
+    const [p, friends] = await Promise.all([api.getPost(id), friendMap()]);
+    if (!p) return setView(html`<div class="empty"><h3>Post not found</h3><p>It may have been deleted.</p><a class="btn secondary" href="#/community">Back to Community</a></div>`);
+    const canDel = (c) => c.user_id === state.uid || p.author_id === state.uid || state.profile?.is_admin;
+    setView(html`<a href="#/community" class="btn ghost small">&larr; Community</a>
+      <div class="post-list" id="posts" style="margin-top:8px">${postCard(p, { friends, full: true })}</div>
+      <section class="card comments" aria-labelledby="cmH"><h2 id="cmH" style="margin-top:0">Comments</h2>
+        ${p.comments.length ? html`<ul class="comment-list">${p.comments.map((c) => html`<li>${avatar(c.user)}<div class="grow"><div class="bubble"><a href="#/u/${c.user_id}"><b>${c.user?.display_name || "Former member"}</b></a> ${c.body}</div>
+          <div class="msg-meta">${ago(c.created_at)}${canDel(c) ? html` · <button type="button" class="linklike" data-delc="${c.id}">Delete</button>` : ""}${c.user_id !== state.uid ? html` · <button type="button" class="linklike" data-repc="${c.id}" data-u="${c.user_id}">Report</button>` : ""}</div></div></li>`)}</ul>`
+          : html`<p class="muted small">No comments yet. Be the first!</p>`}
+        <form class="chat-form" id="cmForm"><label for="cmIn" class="visually-hidden">Write a comment</label>
+          <textarea id="cmIn" rows="1" maxlength="600" required placeholder="Write a comment…"></textarea><button class="btn" id="cmSend">Send</button></form>
+        <p class="hint" id="cmWarn" hidden>Keep it on Swapfume: don't share emails, phone numbers or payment apps.</p></section>`);
+    bindPosts($("#posts"), () => (location.hash === `#/post/${id}` ? route() : null));
+    const inp = $("#cmIn");
+    inp.addEventListener("input", () => { $("#cmWarn").hidden = !looksPrivate(inp.value); });
+    $("#cmForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#cmSend"), async () => { await api.commentPost(p.id, inp.value); route(); }); });
+    $$("[data-delc]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deletePostComment(b.dataset.delc); route(); })));
+    $$("[data-repc]").forEach((b) => b.addEventListener("click", () => {
+      const c = p.comments.find((x) => String(x.id) === b.dataset.repc);
+      reportDialog({ targetUserId: b.dataset.u, targetPostCommentId: b.dataset.repc, what: "this comment", prefill: `Comment: “${(c?.body || "").slice(0, 500)}”\n\nWhat's wrong: ` });
+    }));
+  }
+
   async function pageMeetups(params) {
     const past = params.get("past") === "1";
     const rows = await api.listEvents({ country: myCC(), past });
     const mine = rows.filter((e) => e.organizer_id === state.uid);
     setView(html`<div class="page-head"><div class="eyebrow">Sharing is caring</div><h1>Community meetups</h1>
-        <p>Perfume lovers getting together in ${myCountry().the}: bring what you'd like to share, sniff new things, decant for each other and swap. No money, ever.</p>
-        <div class="row" style="margin-top:10px"><a class="btn" href="#/meetup/new">Organize a meetup</a>
-          <a class="btn ghost" href="#/meetups${past ? "" : "?past=1"}">${past ? "Upcoming meetups" : "Past meetups"}</a></div></div>
+        <p>Perfume lovers getting together in ${myCountry().the}: bring what you'd like to share, sniff new things, decant for each other and swap. No money, ever.</p></div>
+      ${communityTabs("meetups")}
+      <div class="row" style="margin-bottom:16px"><a class="btn" href="#/meetup/new">Organize a meetup</a>
+          <a class="btn ghost" href="#/meetups${past ? "" : "?past=1"}">${past ? "Upcoming meetups" : "Past meetups"}</a></div>
       ${rows.length ? html`<div class="meetup-list">${rows.map(meetupCard)}</div>`
         : html`<div class="empty"><h3>${past ? "No past meetups yet" : "No meetups planned yet"}</h3><p>${past ? "" : "Be the first! Pick a café or park, a date, and invite the community."}</p>${past ? "" : html`<a class="btn" href="#/meetup/new">Organize a meetup</a>`}</div>`}
       ${mine.length && !past ? html`<p class="small muted" style="margin-top:14px">You're organizing ${mine.length} of these.</p>` : ""}`);
@@ -2213,10 +2424,14 @@
     [/^\/messages$/, pageMessages, "swaps"],
     [/^\/chat\/(\d+)$/, pageChat, "swaps"],
     [/^\/me$/, pageMe, "me"],
-    [/^\/meetups$/, pageMeetups, "meetups"],
-    [/^\/meetup\/new$/, () => pageMeetupForm(null), "meetups"],
-    [/^\/meetup\/(\d+)\/edit$/, (id) => pageMeetupForm(id), "meetups"],
-    [/^\/meetup\/(\d+)$/, pageMeetup, "meetups"],
+    [/^\/community$/, pageCommunity, "community"],
+    [/^\/discover$/, pageDiscover, "community"],
+    [/^\/friends$/, pageFriends, "community"],
+    [/^\/post\/(\d+)$/, pagePost, "community"],
+    [/^\/meetups$/, pageMeetups, "community"],
+    [/^\/meetup\/new$/, () => pageMeetupForm(null), "community"],
+    [/^\/meetup\/(\d+)\/edit$/, (id) => pageMeetupForm(id), "community"],
+    [/^\/meetup\/(\d+)$/, pageMeetup, "community"],
     [/^\/admin$/, pageAdmin, "me"]
   ];
   // Pages anyone can open, signed in or not.

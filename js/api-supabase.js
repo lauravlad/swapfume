@@ -329,9 +329,11 @@
         return out;
       },
 
-      async report({ targetUserId, targetItemId, targetPerfumeReviewId, reason }) {
+      async report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, reason }) {
         const row = { reporter_id: me(), target_user_id: targetUserId || null, target_item_id: targetItemId ? Number(targetItemId) : null, reason: String(reason || "").trim() };
         if (targetPerfumeReviewId) row.target_perfume_review_id = Number(targetPerfumeReviewId);
+        if (targetPostId) row.target_post_id = Number(targetPostId);
+        if (targetPostCommentId) row.target_post_comment_id = Number(targetPostCommentId);
         check(await sb.from("reports").insert(row));
       },
 
@@ -422,7 +424,7 @@
       },
       async reviewPerfume(id, approve) { check(await sb.rpc("admin_review_perfume", { p_id: Number(id), p_approve: !!approve })); },
       async listReports() {
-        return check(await sb.from("reports").select(`*, reporter:profiles!reports_reporter_id_fkey(${LITE}), target_user:profiles!reports_target_user_id_fkey(${LITE}), target_item:collection_items(*, perfume:perfumes(*)), target_perfume_review:perfume_reviews(*, perfume:perfumes(*), author:profiles!perfume_reviews_user_id_fkey(id,display_name))`).order("created_at", { ascending: false }));
+        return check(await sb.from("reports").select(`*, reporter:profiles!reports_reporter_id_fkey(${LITE}), target_user:profiles!reports_target_user_id_fkey(${LITE}), target_item:collection_items(*, perfume:perfumes(*)), target_perfume_review:perfume_reviews(*, perfume:perfumes(*), author:profiles!perfume_reviews_user_id_fkey(id,display_name)), target_post:posts(id,body,kind,is_hidden,author_id), target_post_comment:post_comments(id,body,post_id,user_id)`).order("created_at", { ascending: false }));
       },
       async resolveReport(id) { check(await sb.from("reports").update({ status: "resolved" }).eq("id", id)); },
       async setBan(userId, banned) { check(await sb.rpc("admin_set_ban", { p_user: userId, p_banned: !!banned })); },
@@ -461,7 +463,64 @@
       async joinEvent(id, going) { check(await sb.rpc("join_event", { p_id: Number(id), p_going: !!going })); },
       async commentEvent(id, body) { check(await sb.rpc("comment_event", { p_id: Number(id), p_body: body })); },
       async deleteEventComment(id) { check(await sb.from("event_comments").delete().eq("id", id)); },
-      async setEventHidden(id, hidden) { check(await sb.rpc("admin_set_event_hidden", { p_id: Number(id), p_hidden: !!hidden })); }
+      async setEventHidden(id, hidden) { check(await sb.rpc("admin_set_event_hidden", { p_id: Number(id), p_hidden: !!hidden })); },
+
+      // ---- Community: friends (migration 023) ----
+      // Rows you're part of: { other, status: "friends" | "sent" | "received", since }
+      async listFriendships() {
+        const v = me();
+        const rows = check(await sb.from("friendships").select(`*, a:profiles!friendships_user_a_fkey(${LITE}), b:profiles!friendships_user_b_fkey(${LITE})`));
+        return rows.map((r) => ({ other: r.user_a === v ? r.b : r.a, other_id: r.user_a === v ? r.user_b : r.user_a,
+          status: r.status === "accepted" ? "friends" : r.requested_by === v ? "sent" : "received", since: r.accepted_at || r.created_at }))
+          .filter((r) => r.other);
+      },
+      async friendStatus(userId) {
+        const v = me(); if (userId === v) return "me";
+        const [a, b] = v < userId ? [v, userId] : [userId, v];
+        const r = check(await sb.from("friendships").select("*").eq("user_a", a).eq("user_b", b).maybeSingle());
+        return !r ? "none" : r.status === "accepted" ? "friends" : r.requested_by === v ? "sent" : "received";
+      },
+      async sendFriendRequest(userId) { return check(await sb.rpc("send_friend_request", { p_user: userId })); },
+      async respondFriendRequest(userId, accept) { check(await sb.rpc("respond_friend_request", { p_user: userId, p_accept: !!accept })); },
+      async removeFriend(userId) { check(await sb.rpc("remove_friend", { p_user: userId })); },
+
+      // ---- Community: posts ----
+      // scope: "feed" (me + friends), "discover" (my country), or authorId (one member's posts).
+      async listPosts({ scope = "discover", authorId, limit = 40 } = {}) {
+        const v = me();
+        let q = sb.from("posts").select(`*, author:profiles!posts_author_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,family), likes:post_likes(user_id), comments:post_comments(count)`);
+        if (authorId) q = q.eq("author_id", authorId);
+        else if (scope === "feed") {
+          const fr = (await this.listFriendships()).filter((f) => f.status === "friends").map((f) => f.other_id);
+          q = q.in("author_id", [v, ...fr]);
+        } else {
+          const p = await this.getProfile(v); q = q.eq("country_code", p?.country_code || "US");
+        }
+        const rows = check(await q.order("created_at", { ascending: false }).limit(limit));
+        return rows.filter((r) => !r.author?.is_banned).map((r) => ({ ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments?.[0]?.count || 0 }));
+      },
+      async getPost(id) {
+        const v = me();
+        const r = check(await sb.from("posts").select(`*, author:profiles!posts_author_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,family), likes:post_likes(user_id)`).eq("id", Number(id)).maybeSingle());
+        if (!r) return null;
+        r.comments = check(await sb.from("post_comments").select(`*, user:profiles!post_comments_user_id_fkey(${LITE})`).eq("post_id", r.id).order("created_at"));
+        return { ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments.length };
+      },
+      async createPost({ kind, body, perfumeId, photoFile }) {
+        const photo_url = photoFile ? await uploadPhoto(photoFile) : null;
+        return check(await sb.rpc("create_post", { p_kind: kind, p_body: body, p_perfume: perfumeId ? Number(perfumeId) : null, p_photo_url: photo_url }));
+      },
+      async deletePost(id) { check(await sb.from("posts").delete().eq("id", Number(id))); },
+      async likePost(id, on) { check(await sb.rpc("like_post", { p_post: Number(id), p_on: !!on })); },
+      async commentPost(id, body) { check(await sb.rpc("comment_post", { p_post: Number(id), p_body: body })); },
+      async deletePostComment(id) { check(await sb.from("post_comments").delete().eq("id", Number(id))); },
+      async setPostHidden(id, hidden) { check(await sb.rpc("admin_set_post_hidden", { p_post: Number(id), p_hidden: !!hidden })); },
+      async trendingWishes() {
+        const rows = check(await sb.rpc("trending_wishes", { p_days: 30 })) || [];
+        if (!rows.length) return [];
+        const ps = check(await sb.from("perfumes").select("*").in("id", rows.map((r) => r.perfume_id)));
+        return rows.map((r) => ({ perfume: ps.find((p) => p.id === r.perfume_id), wanted: Number(r.wanted) })).filter((r) => r.perfume);
+      }
     };
   };
 })();
