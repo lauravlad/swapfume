@@ -116,7 +116,7 @@ For every item below, answer:
 | Contact Info → **Physical Address** | Shipping address, shown only to a swap partner |
 | Location → **Coarse Location** | Postal code, for rounded distances and nearby swaps |
 | User Content → **Photos or Videos** | Profile and bottle photos; "Take a photo" pictures (sent to Anthropic to read labels, not stored) |
-| User Content → **Other User Content** | Reviews, swap notes, listings, wishlist |
+| User Content → **Other User Content** | Reviews, swap notes, listings, wishlist; Community posts, comments, likes and friends (added for 1.3) |
 | User Content → **Emails or Text Messages** | In-app messages between members about a swap, gift or listing (added for 1.2) |
 | User Content → **Customer Support** | Messages to hello@swapfume.com |
 | Identifiers → **User ID** | Your account ID |
@@ -162,3 +162,26 @@ Safety: addresses are shown only to a swap partner after both accept. Postal cod
 
 ## 6. Submit
 Once every section has a green check, click **Add for Review**, then **Submit for Review**. Apple usually answers within 1–3 days.
+
+---
+
+## 7. Version 1.3 (build 5), uploaded 2026-11-24
+
+1. App Store Connect → Swapfume → iOS App → **+** next to "iOS App" → version **1.3**.
+   (If 1.2 was never submitted, you can skip it: 1.3 includes everything in 1.2.)
+2. Under **Build**, pick **1.3 (5)**. Apple needs 10–30 minutes after the upload before it appears.
+3. Paste **What's New**:
+```
+Meet the Swapfume Community!
+• New Community tab: share your scent of the day, discoveries, hauls and questions, with an optional photo and perfume tag. Like and comment on posts.
+• Add friends: send a request, and their posts show up in your Feed. Your friends list is private.
+• Discover: the most-wanted perfumes, newly listed trades and posts from members in your country.
+• Perfume pages now have a gallery of real member photos.
+• A fresh look: new colours for each scent family, smoother animations and bigger buttons.
+```
+4. **App Privacy:** "Other User Content" now also covers Community posts, comments, likes and friends (see section 3). Click **Edit** → keep the same answers; just make sure "Other User Content" is ticked.
+5. **Notes for the reviewer:** keep the notes above and add:
+```
+New in 1.3: a Community tab (Feed, Discover, Friends, Meetups) where members post text with an optional photo and perfume tag, like, comment and add friends (request + accept). Moderation for this user-generated content: every post, comment and photo has a Report button; members can block each other (blocking also removes the friendship and hides each other's posts); admins can hide posts and photos and ban accounts; posting is rate-limited. Content is visible only to signed-in adult members in the same country.
+```
+6. Click **Add for Review**, then **Submit for Review**.
