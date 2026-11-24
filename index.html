@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Swapfume — Swap the scents you love</title>
   <meta name="description" content="A small, friendly community for swapping perfume samples, decants and bottles. No money involved.">
-  <meta name="theme-color" content="#FAF6F1">
+  <meta name="theme-color" content="#F7F5F2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#10181A" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
   <!-- Home-screen app: works when hosted at the site root (all paths are relative). -->
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -18,9 +20,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fonts load without blocking the page: it shows at once with fallback fonts, then swaps in. -->
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
-  <link rel="stylesheet" href="css/styles.css?v=30">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+  <link rel="stylesheet" href="css/styles.css?v=31">
 </head>
 <body>
   <a class="skip" href="#view">Skip to content</a>
@@ -67,6 +69,8 @@
   <script src="js/util.js?v=17"></script>
   <script src="js/api-demo.js?v=25"></script>
   <script src="js/api-supabase.js?v=26"></script>
-  <script src="js/app.js?v=36"></script>
+  <!-- Motion (motion.dev) for the welcome-page animation. Loaded without blocking; the page works fully without it. -->
+  <script src="https://cdn.jsdelivr.net/npm/motion@11.11.17/dist/motion.js" async id="motionLib"></script>
+  <script src="js/app.js?v=37"></script>
 </body>
 </html>

@@ -584,3 +584,241 @@ fieldset.field legend { font-weight: 600; margin-bottom: 4px; }
 .dup-hint { color: var(--accent); }
 
 #impPhotoBtn svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }
+
+/* =====================================================================
+   SWAP CIRCLE (2026-11): the current design. Everything above is the older
+   layers; this section wins because it comes last.
+
+   PALETTE: why these colours
+   - Raspberry #A3144C (hue ~335°) grows out of the old deep rose, so the
+     brand still reads as "perfume, warm, a little luxurious", but brighter
+     and friendlier: this is a community, not a boutique.
+   - Teal #0E6767 (hue ~180°) is raspberry's near-complement on the colour
+     wheel. Opposites make each other look more vivid, and the pair mirrors
+     what Swapfume does: two people, two sides, one swap. Raspberry = "you"
+     and the main action; teal = "the other member", trust and calm details
+     (eyebrows, the focus ring, step 2).
+   - Saffron #F2B33D is a small warm spark (highlights, stars), analogous to
+     the old champagne gold, so the bottle illustrations and logo still fit.
+   - Neutrals are warm off-whites in light mode and deep teal-black in dark
+     mode, so the background belongs to the same family as the colours.
+   - Dark mode is not inverted: raspberry text lightens to #FF8FB4 to stay
+     readable, while buttons keep a deep raspberry fill (#B8195A) so their
+     white text passes. Every text pair is checked at 4.5:1 or better.
+   Fonts: Playfair Display (headings, editorial and elegant) + Inter (body,
+   very readable at small sizes).
+   ===================================================================== */
+:root {
+  --bg: #F7F5F2;
+  --surface: #FFFFFF;
+  --surface-2: #EFEBE7;
+  --ink: #1E1A22;
+  --muted: #5E5763;
+  --line: #E4DFE6;
+  --line-strong: #CFC7D1;
+  --field: #FFFFFF;
+  --field-line: #D5CDD6;
+  --accent: #A3144C;          /* raspberry text & links: 7.0:1 on --bg */
+  --accent-fill: #A3144C;     /* button fill: white text 7.6:1 */
+  --accent-fill-hover: #8A0F3F;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #FBE3EC;
+  --accent-2: #A3144C;
+  --teal: #0E6767;            /* 6.1:1 on --bg */
+  --teal-deco: #2BB3A6;       /* decoration only */
+  --teal-soft: #DDF2EF;
+  --saffron: #F2B33D;         /* decoration only */
+  --gold: #0E6767;            /* older rules use --gold for eyebrows and focus rings: now teal */
+  --gold-soft: #FDF1D8;
+  --gold-ink: #6B4A0A;
+  --champagne: #DDF2EF;
+  --ok: #2F6B48; --ok-soft: #E4F0E8;
+  --warn: #8A5A12; --warn-soft: #FBF0DC;
+  --danger: #A2302F;
+  --ring: #0E6767;
+  --shadow: 0 1px 2px rgba(30, 26, 34, .05), 0 10px 28px -14px rgba(30, 26, 34, .22);
+  --shadow-lift: 0 2px 4px rgba(30, 26, 34, .06), 0 22px 40px -18px rgba(163, 20, 76, .35);
+  --serif: "Playfair Display", "Iowan Old Style", Georgia, serif;
+  --sans: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10181A;
+    --surface: #182225;
+    --surface-2: #1F2B2E;
+    --ink: #EEF3F2;
+    --muted: #A7B6B5;
+    --line: #2A383B;
+    --line-strong: #3C4D50;
+    --field: #121C1E;
+    --field-line: #3C4D50;
+    --accent: #FF8FB4;          /* 8.4:1 on --bg */
+    --accent-fill: #B8195A;     /* white text 6.3:1 */
+    --accent-fill-hover: #A0144E;
+    --accent-soft: #3A1828;
+    --accent-2: #B8195A;
+    --teal: #5FD3C6;
+    --teal-soft: #173233;
+    --gold: #5FD3C6;
+    --gold-soft: #33290F;
+    --gold-ink: #F5D9A0;
+    --champagne: #173233;
+    --ok: #7FD1A0; --ok-soft: #16301F;
+    --warn: #F2C46B; --warn-soft: #33290F;
+    --danger: #FF8A80;
+    --ring: #5FD3C6;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -14px rgba(0, 0, 0, .6);
+    --shadow-lift: 0 2px 4px rgba(0, 0, 0, .3), 0 22px 40px -18px rgba(0, 0, 0, .7);
+  }
+  .area-tiles img { filter: saturate(.6) brightness(.75); }
+  .tile .art svg, .hero-pic svg { filter: drop-shadow(0 10px 12px rgba(0, 0, 0, .45)); }
+}
+
+body {
+  background:
+    radial-gradient(900px 520px at 100% -10%, color-mix(in srgb, var(--teal-deco) 12%, transparent), transparent 60%),
+    radial-gradient(800px 480px at -10% 0%, color-mix(in srgb, var(--accent-fill) 9%, transparent), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+h1, h2, h3 { font-weight: 700; letter-spacing: -.01em; }
+h1 { font-size: 2.15rem; }
+h2 { font-size: 1.5rem; }
+h2::after { background: linear-gradient(90deg, var(--saffron), transparent); }
+h3, .card h3, .dlg h3 { font-size: 1.2rem; }
+::selection { background: var(--teal-soft); color: var(--ink); }
+a { color: var(--accent); }
+
+/* Visible focus everywhere (teal ring: 3:1+ against every background) */
+:focus-visible, .tile.selectable:focus-within, .photo-pick:focus-within { outline: 3px solid var(--ring); outline-offset: 2px; }
+.seg label:has(input:focus-visible), .star-input input:focus-visible + label, .style-chip input:focus-visible + span { outline: 3px solid var(--ring); }
+.app-badge:focus-visible { outline: 3px solid var(--ring); }
+input:focus, select:focus, textarea:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 28%, transparent); }
+
+/* Bars */
+.topbar { background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom-color: var(--line); }
+.wordmark { font-size: 1.5rem; font-weight: 700; color: var(--ink); }
+.wordmark-tag { font-size: .95rem; color: var(--accent); border-left-color: var(--line); }
+.topnav a { color: var(--muted); }
+.topnav a.active { background: var(--ink); color: var(--bg); }
+.tabbar { background: color-mix(in srgb, var(--surface) 86%, transparent); border-top-color: var(--line); }
+.tabbar a { color: var(--muted); }
+.tabbar a.active { color: var(--accent); }
+.dot { background: var(--accent-fill); border-color: var(--surface); }
+.demo-banner { background: var(--gold-soft); color: var(--gold-ink); border-bottom-color: var(--line); }
+.skip { background: var(--ink); color: var(--bg); }
+
+/* Cards, tiles, panels */
+.card, .tile { background: var(--surface); border-color: var(--line); }
+.pname { font-size: 1.1rem; }
+.match-head a.name { font-size: 1.2rem; }
+.tile .art { background: radial-gradient(120% 90% at 50% 100%, color-mix(in srgb, var(--tint, #E8C4C0) 55%, var(--surface)) 0%, var(--surface-2) 72%); }
+.hero-pic img, .hero-pic svg { background: radial-gradient(110% 80% at 50% 100%, color-mix(in srgb, var(--tint, #E8C4C0) 60%, var(--surface)), var(--surface-2) 75%); box-shadow: var(--shadow); }
+.perfume-hero h1 { font-size: 2.2rem; }
+.side, .layer, .meet-plan { background: var(--surface-2); }
+.meet-plan { border-color: var(--line); font-size: 1.1rem; }
+.address { background: var(--surface-2); border-color: var(--line-strong); }
+.avatar { box-shadow: 0 0 0 3px var(--surface), 0 4px 12px -4px rgba(0, 0, 0, .35); }
+.empty { background: color-mix(in srgb, var(--surface) 60%, transparent); border-color: var(--line-strong); }
+.method { background: var(--surface); border-color: var(--line); }
+.photo-pick { background: var(--surface-2); border-color: var(--line-strong); }
+.photo-prev { background: var(--surface); }
+.tile.selectable .check { background: var(--surface); border-color: var(--line-strong); }
+.tile.selectable.on .check, .steps li.done .mark { background: var(--accent-fill); border-color: var(--accent-fill); }
+.steps li.done::before { background: var(--accent-fill); }
+.steps .mark { background: var(--surface); border-color: var(--line-strong); }
+.steps li.now .mark { border-color: var(--accent); color: var(--accent); }
+.area-glow { background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent-fill) 18%, transparent) 0, color-mix(in srgb, var(--accent-fill) 10%, transparent) 28%, transparent 46%), radial-gradient(circle at 50% 50%, transparent 60%, color-mix(in srgb, var(--bg) 55%, transparent) 100%); }
+.danger-zone { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+code { background: var(--surface-2); }
+.tagsum .bar { background: var(--surface-2); }
+.tagsum .bar span { background: var(--teal-deco); }
+.star-input label { color: var(--line-strong); }
+.stars, .star-input input:checked ~ label, .star-input label:hover, .star-input label:hover ~ label, .tile .review-link span { color: var(--saffron); }
+
+/* Pills & notices */
+.pill { background: var(--surface-2); color: var(--ink); }
+.pill.rose { background: var(--accent-soft); color: var(--accent); }
+.pill.gold { background: var(--gold-soft); color: var(--gold-ink); }
+.pill.ok, .near-hint { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.grey { background: var(--surface-2); color: var(--muted); }
+.pill.qty { background: var(--ink); color: var(--bg); }
+.notice { background: var(--gold-soft); color: var(--gold-ink); }
+.notice.rose { background: var(--accent-soft); color: var(--accent); }
+.notice.ok { background: var(--ok-soft); color: var(--ok); }
+.note, .fam, .style-chip span { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.meetup-date { background: var(--accent-soft); color: var(--accent); }
+.eyebrow { color: var(--teal); }
+
+/* Buttons */
+.btn { background: var(--accent-fill); color: var(--accent-ink); box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--accent-fill) 80%, transparent); transition: transform .15s var(--ease-out), background .15s, box-shadow .15s; }
+.btn:hover { background: var(--accent-fill-hover); }
+.btn:active { transform: translateY(1px) scale(.98); }
+.btn.secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+.btn.secondary:hover { background: var(--surface-2); }
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn.ghost:hover { background: var(--accent-soft); }
+.btn.danger { background: var(--surface); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.linklike { color: var(--accent); }
+.seg { background: var(--surface-2); }
+.seg .on, .seg button[aria-pressed=true], .seg label:has(input:checked) { background: var(--surface); color: var(--accent); }
+
+/* Inputs */
+input[type=text], input[type=email], input[type=password], input[type=number], input[type=search], input[type=date], select, textarea {
+  background: var(--field); color: var(--ink); border-color: var(--field-line);
+}
+.picker-list { background: var(--surface); border-color: var(--line); }
+
+/* Messages, toast, dialogs */
+.msg.me .bubble { background: var(--accent-fill); color: var(--accent-ink); }
+.msg.them .bubble { background: var(--surface-2); color: var(--ink); }
+.toast { background: var(--ink); color: var(--bg); }
+.toast.error { background: var(--danger); color: var(--bg); }
+dialog { background: var(--surface); color: var(--ink); }
+.swap-summary { border: 1px solid rgba(255, 255, 255, .12); }
+
+/* ---------- Welcome page (signed out) ---------- */
+.welcome.circle { display: block; min-height: 0; padding-top: 0; }
+.w-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 8px; }
+.w-top .wordmark { font-size: 1.45rem; }
+.w-top .wordmark-mark { width: 32px; height: 32px; }
+@media (max-width: 420px) { .w-top .wordmark-tag { display: none; } }
+.w-hero { text-align: center; padding: 28px 0 0; }
+.w-pill { display: inline-flex; align-items: center; gap: 8px; background: var(--teal-soft); color: var(--teal); font-weight: 600; font-size: .82rem; padding: 6px 14px; border-radius: 999px; }
+.w-hero h1 { font-size: clamp(2.6rem, 9vw, 4.8rem); line-height: 1.04; letter-spacing: -.02em; margin: 16px auto 14px; max-width: 14ch; }
+.w-hero h1 em { font-style: italic; color: var(--accent); position: relative; white-space: nowrap; isolation: isolate; }
+.w-hero h1 em::after { content: ""; position: absolute; left: 0; right: 0; bottom: .06em; height: .16em; background: var(--saffron); opacity: .6; border-radius: 4px; z-index: -1; transform-origin: left center; }
+.w-hero .lead { font-size: 1.12rem; color: var(--muted); max-width: 44ch; margin: 0 auto 22px; }
+.w-cta { justify-content: center; gap: 12px; }
+.w-cta .hero-badge { margin-top: 0; }
+.w-cta .btn { min-height: 50px; padding: 12px 24px; font-size: 1rem; }
+.w-loop { position: relative; width: min(100%, 440px); aspect-ratio: 2.1; margin: 26px auto 0; }
+.w-loop .orbit { position: absolute; inset: 0; width: 100%; height: 100%; }
+.w-who { position: absolute; top: 50%; width: 68px; height: 68px; margin-top: -34px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 0 0 5px var(--bg), var(--shadow); }
+.w-who svg { width: 30px; height: 30px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; }
+.w-who.l { left: 0; background: var(--accent-fill); }
+.w-who.r { right: 0; background: #0E6767; }
+.w-tok { position: absolute; left: 50%; top: 50%; width: 36px; height: 60px; margin: -30px 0 0 -18px; }
+.w-tok svg { width: 100%; height: 100%; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .2)); }
+.w-tok.t1 { transform: translate(-92px, -40px); }
+.w-tok.t2 { transform: translate(92px, 40px); }
+.w-steps { list-style: none; padding: 0; margin: 40px 0 0; display: grid; gap: 14px; counter-reset: step; }
+@media (min-width: 760px) { .w-steps { grid-template-columns: repeat(3, 1fr); } }
+.w-steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
+.w-steps li::before { counter-increment: step; content: counter(step); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font-weight: 700; background: var(--accent-soft); color: var(--accent); margin-bottom: 10px; }
+.w-steps li:nth-child(2)::before { background: var(--teal-soft); color: var(--teal); }
+.w-steps li:nth-child(3)::before { background: var(--gold-soft); color: var(--gold-ink); }
+.w-steps h3 { font-size: 1.2rem; margin-bottom: 6px; }
+.w-steps p { margin: 0; color: var(--muted); }
+.w-steps p + p { margin-top: 6px; }
+.w-join { display: grid; gap: 24px; padding: 44px 0 8px; align-items: start; scroll-margin-top: 16px; }
+@media (min-width: 860px) { .w-join { grid-template-columns: 1fr 1fr; gap: 48px; } }
+.w-join h2 { font-size: 2rem; margin-top: 0; }
+.w-join > .card { scroll-margin-top: 16px; padding: 24px; border-radius: 24px; box-shadow: var(--shadow-lift); background: var(--surface); }
+.w-join .ask-country { margin-top: 14px; }
+@media (max-width: 560px) { .w-hero { padding-top: 18px; } }

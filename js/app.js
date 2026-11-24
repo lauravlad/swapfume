@@ -540,24 +540,38 @@
     let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { /* older browser */ }
     const guessCC = tz === "Europe/Bucharest" ? "RO"
       : /^America\/(Toronto|Vancouver|Montreal|Edmonton|Winnipeg|Halifax|Regina|St_Johns|Moncton|Whitehorse|Yellowknife|Iqaluit|Glace_Bay|Goose_Bay)/.test(tz) ? "CA" : "US";
-    setView(html`<section class="welcome">
-      <div class="hero">
-        <div class="eyebrow">A perfume swap community</div>
-        <h1>Swap the scents <em>you love.</em></h1>
-        <p class="lead">Trade samples, decants and bottles with fellow perfume lovers. No money, ever — just generosity and good packing.</p>
-        <div class="hero-art">${bottleSvg({ brand: "a", name: "c" }, "full")}${bottleSvg({ brand: "b", name: "x" }, "decant")}${bottleSvg({ brand: "q", name: "r" }, "sample")}</div>
-        <ul class="points">
-          <li>List what you have, what you'd trade, and what you're hunting for.</li>
-          <li>We find people who have what you want <i>and</i> want what you have.</li>
-          <li>Addresses stay private until both of you accept the swap.</li>
-          <li>Reviews and a completed-swap count help you trade with confidence.</li>
-        </ul>
-        <p class="small muted" style="margin-top:14px">Open in ${Util.openCountriesText()}. Members swap within their own country — perfume can't easily cross borders by mail.</p>
-        <button type="button" class="btn secondary small" id="askCountry">${GLOBE} Add my country</button>
-        <div id="askHost" hidden>${countryRequestForm()}</div>
-        ${appStoreBadge("hero-badge")}
+    const PERSON = raw(`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>`);
+    setView(html`<section class="welcome circle">
+      <div class="w-top">
+        <span class="wordmark"><img src="icons/icon.svg" alt="" class="wordmark-mark">Swapfume<span class="wordmark-tag">Sharing is caring</span></span>
+        <button type="button" class="btn secondary small" id="jumpIn">Sign in</button>
       </div>
-      <div class="card">
+      <div class="w-hero hero">
+        <span class="w-pill" data-in>A perfume swap community</span>
+        <h1 data-in>Swap the scents <em>you love.</em></h1>
+        <p class="lead" data-in>Trade samples, decants and bottles with fellow perfume lovers. No money, ever — just generosity and good packing.</p>
+        <div class="row w-cta" data-in><button type="button" class="btn" id="jumpUp">Create account</button>${appStoreBadge("hero-badge")}</div>
+        <div class="w-loop" aria-hidden="true">
+          <svg class="orbit" viewBox="0 0 420 200" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="2 9">
+            <path d="M70 88 C150 14 270 14 350 88" stroke="var(--teal-deco)"/><path d="M350 112 C270 186 150 186 70 112" stroke="var(--accent-fill)"/>
+          </svg>
+          <span class="w-who l">${PERSON}</span><span class="w-who r">${PERSON}</span>
+          <span class="w-tok t1">${bottleSvg({ brand: "a", name: "c" }, "full")}</span><span class="w-tok t2">${bottleSvg({ brand: "b", name: "x" }, "decant")}</span>
+        </div>
+      </div>
+      <ol class="w-steps">
+        <li data-in><h3>List your shelf</h3><p>List what you have, what you'd trade, and what you're hunting for.</p></li>
+        <li data-in><h3>Get matched</h3><p>We find people who have what you want <i>and</i> want what you have.</p></li>
+        <li data-in><h3>Swap with confidence</h3><p>Addresses stay private until both of you accept the swap.</p><p>Reviews and a completed-swap count help you trade with confidence.</p></li>
+      </ol>
+      <div class="w-join" id="join">
+        <div>
+          <h2>Join the circle</h2>
+          <p class="muted">Open in ${Util.openCountriesText()}. Members swap within their own country — perfume can't easily cross borders by mail.</p>
+          <button type="button" class="btn secondary small" id="askCountry">${GLOBE} Add my country</button>
+          <div id="askHost" hidden>${countryRequestForm()}</div>
+        </div>
+      <div class="card" id="authCard">
         <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-tab="in">Sign in</button><button role="tab" aria-selected="false" data-tab="up">Create account</button></div>
         <form id="authForm">
           <div class="field" id="nameField" hidden><label for="dn">Display name</label><input id="dn" type="text" maxlength="40" autocomplete="nickname" placeholder="What should people call you?"></div>
@@ -572,7 +586,7 @@
         </form>
         ${demo ? html`<hr class="soft"><div class="notice"><b>Demo mode.</b> Nothing leaves this browser. Create any account (e.g. you@test.com), or step in as a pretend member:</div>
           <div class="row" style="margin-top:10px" id="demoUsers">${api.demoUsers().filter((u) => u.id.startsWith("m-")).map((u) => html`<button class="btn small secondary" data-as="${u.id}">${u.display_name}${u.is_admin ? " (admin)" : ""}</button>`)}</div>` : ""}
-      </div></section>`);
+      </div></div></section>`);
     let mode = "in";
     $$("[data-tab]").forEach((b) => b.addEventListener("click", () => {
       mode = b.dataset.tab;
@@ -601,6 +615,39 @@
     $$("[data-as]").forEach((b) => b.addEventListener("click", () => api.demoSwitchUser(b.dataset.as)));
     $("#askCountry").addEventListener("click", () => { $("#askHost").hidden = false; $("#askCountry").hidden = true; $("#acCountry").focus(); });
     bindCountryRequestForm();
+    // "Sign in" (top) and "Create account" (hero) jump down to the form with the right tab chosen.
+    const jump = (tab, field) => {
+      $(`[data-tab="${tab}"]`).click();
+      $("#authCard").scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+      $(field).focus({ preventScroll: true });
+    };
+    $("#jumpIn").addEventListener("click", () => jump("in", "#em"));
+    $("#jumpUp").addEventListener("click", () => jump("up", "#dn"));
+    animateWelcome();
+  }
+
+  // ---------- Welcome-page motion (Motion library, motion.dev) ----------
+  // Only runs when the visitor hasn't asked their device to reduce motion. Without the library
+  // (slow network, offline app) the page simply appears as it is: nothing is ever hidden first.
+  const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function animateWelcome() {
+    if (reducedMotion()) return;
+    const run = (entrance) => {
+      const M = window.Motion, sec = $(".welcome.circle");
+      if (!M || !sec || !sec.isConnected) return;
+      const ease = [0.22, 1, 0.36, 1];
+      // 1. Entrance (only when the page has just appeared): text and the three steps rise in, one after another.
+      if (entrance) M.animate($$("[data-in]", sec), { opacity: [0, 1], transform: ["translateY(22px)", "translateY(0px)"] }, { duration: 0.75, delay: M.stagger(0.07), ease });
+      // 2. The two members pop in, then their bottles trade places along the arcs: three times, then rest.
+      M.animate($$(".w-who", sec), { opacity: [0, 1], transform: ["scale(.5)", "scale(1)"] }, { delay: M.stagger(0.15, { startDelay: 0.35 }), type: "spring", stiffness: 220, damping: 14 });
+      const loop = $(".w-loop", sec), x = Math.max(50, loop.offsetWidth / 2 - 100), y = loop.offsetHeight * 0.36;
+      const path = (sx) => [`translate(${-sx * x}px, ${-sx * 4}px)`, `translate(0px, ${-sx * y}px)`, `translate(${sx * x}px, ${sx * 4}px)`];
+      $(".w-tok.t1", sec).style.transform = path(1)[0]; $(".w-tok.t2", sec).style.transform = path(-1)[0];
+      M.animate($(".w-tok.t1", sec), { transform: path(1) }, { duration: 2.2, delay: 0.9, repeat: 2, repeatType: "reverse", ease: "easeInOut" });
+      M.animate($(".w-tok.t2", sec), { transform: path(-1) }, { duration: 2.2, delay: 0.9, repeat: 2, repeatType: "reverse", ease: "easeInOut" });
+    };
+    if (window.Motion) run(true);
+    else $("#motionLib")?.addEventListener("load", () => run(false), { once: true });
   }
 
   // "Add my country": anyone outside the open countries joins a waitlist (migration 016).
