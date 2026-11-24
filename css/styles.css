@@ -822,3 +822,129 @@ dialog { background: var(--surface); color: var(--ink); }
 .w-join > .card { scroll-margin-top: 16px; padding: 24px; border-radius: 24px; box-shadow: var(--shadow-lift); background: var(--surface); }
 .w-join .ask-country { margin-top: 14px; }
 @media (max-width: 560px) { .w-hero { padding-top: 18px; } }
+
+/* =====================================================================
+   COLOUR, MOTION & UX POLISH (2026-11-24). Comes last, so it wins.
+
+   COLOUR
+   - Scent families now sit around the colour wheel in fragrance-wheel order
+     (see FAMILY_COLOR in app.js), so a woody tile no longer looks like an
+     amber or musky one. The family colour tints each tile's glow and chip.
+   - Sizes get one colour each, from the brand triad: sample = teal,
+     decant = saffron, full bottle = raspberry. Same meaning everywhere.
+   MOTION (all of it is skipped with "reduce motion")
+   - One easing family: quick out, soft landing (--ease-out) for things that
+     appear; a light spring (--ease-spring) for small "pops" (checks, toasts).
+   - Pages: header, cards and tiles rise 10px and fade in, staggered 40ms.
+   - Dialogs scale up from 96%; toasts spring up; the tab pill grows in.
+   UX
+   - Hover lifts only on devices with a mouse (no "stuck" hover on phones).
+   - Search takes the full width on phones; filters scroll sideways.
+   - Share buttons sit on their own line under a small label.
+   - The spinner waits 250ms, so fast pages never flash it.
+   ===================================================================== */
+:root { --ease-spring: cubic-bezier(.34, 1.56, .64, 1); }
+h1, h2, h3 { text-wrap: balance; }
+p, li { text-wrap: pretty; }
+a, button, .btn, label, summary { -webkit-tap-highlight-color: transparent; }
+
+/* Colour: sizes */
+.pill.teal { background: var(--teal-soft); color: var(--teal); }
+.pill.gold { background: var(--gold-soft); color: var(--gold-ink); }
+
+/* Colour: family chips and tile glow use the family colour */
+.fam { background: color-mix(in srgb, var(--tint, var(--surface-2)) 22%, var(--surface)); border-color: color-mix(in srgb, var(--tint, var(--line)) 45%, var(--line)); }
+.tile .art { background:
+  radial-gradient(70% 55% at 50% 88%, color-mix(in srgb, var(--tint, #E8C4C0) 70%, transparent), transparent 70%),
+  linear-gradient(180deg, color-mix(in srgb, var(--tint, #E8C4C0) 14%, var(--surface)) 0%, color-mix(in srgb, var(--tint, #E8C4C0) 34%, var(--surface)) 100%); }
+.tile .art svg { filter: drop-shadow(0 12px 14px color-mix(in srgb, var(--tint, #8C6A2A) 45%, rgba(30, 20, 20, .25))); }
+@media (prefers-color-scheme: dark) {
+  .fam { background: color-mix(in srgb, var(--tint, var(--surface-2)) 16%, var(--surface)); }
+  .tile .art { background:
+    radial-gradient(70% 55% at 50% 88%, color-mix(in srgb, var(--tint, #E8C4C0) 38%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--surface-2) 0%, color-mix(in srgb, var(--tint, #E8C4C0) 16%, var(--surface-2)) 100%); }
+}
+
+/* UX: top bar shadow once scrolled */
+.topbar { transition: box-shadow .25s var(--ease-out), background .25s; }
+body.scrolled .topbar { box-shadow: 0 8px 24px -18px rgba(30, 26, 34, .45); }
+
+/* UX: hover effects only where there is a mouse */
+@media (hover: none) {
+  .tile:hover, .tile:hover .art svg, .tile:hover .art img { transform: none; }
+  .tile:hover { box-shadow: var(--shadow); }
+}
+@media (hover: hover) {
+  .btn:not(.ghost):not(:disabled):hover { transform: translateY(-1px); }
+  .btn:not(.ghost):not(:disabled):active { transform: translateY(1px) scale(.98); }
+  .tile .art svg { transition: transform .45s var(--ease-out); }
+  .tile:hover .art svg { transform: translateY(-5px) rotate(-3deg) scale(1.04); }
+}
+.tile:active { transform: scale(.985); }
+
+/* UX: search and filters on phones */
+@media (max-width: 560px) {
+  #bf, #cf { flex-wrap: wrap; }
+  #bf input[type=search], #cf input[type=search] { flex: 1 1 100% !important; min-width: 0 !important; }
+  #bf .seg, #cf .seg { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  #bf .seg::-webkit-scrollbar, #cf .seg::-webkit-scrollbar { display: none; }
+  .share-row > span:first-child { flex-basis: 100%; }
+}
+.share-row { gap: 8px; }
+
+/* Tabs: sliding underline feel */
+.tablink, .tabs button { position: relative; transition: color .2s; }
+
+/* Spinner waits a moment, so quick pages don't flash it */
+.spinner { animation: spin .8s linear infinite, fade-in .2s .25s both; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
+  @keyframes dlg-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pill-in { from { transform: scaleX(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* Page entrance: top-level blocks, then the grid's tiles one after another */
+  #view.entering > *:not(.spinner) { animation: rise .5s var(--ease-out) both; }
+  #view.entering > *:nth-child(2) { animation-delay: .04s; }
+  #view.entering > *:nth-child(3) { animation-delay: .08s; }
+  #view.entering > *:nth-child(4) { animation-delay: .12s; }
+  #view.entering > *:nth-child(n+5) { animation-delay: .16s; }
+  #view.entering .grid > *, #view.entering .match, #view.entering .list > li { animation: rise .5s var(--ease-out) both; }
+  #view.entering .grid > *:nth-child(1) { animation-delay: .10s; }
+  #view.entering .grid > *:nth-child(2) { animation-delay: .14s; }
+  #view.entering .grid > *:nth-child(3) { animation-delay: .18s; }
+  #view.entering .grid > *:nth-child(4) { animation-delay: .22s; }
+  #view.entering .grid > *:nth-child(5) { animation-delay: .26s; }
+  #view.entering .grid > *:nth-child(6) { animation-delay: .30s; }
+  #view.entering .grid > *:nth-child(7) { animation-delay: .34s; }
+  #view.entering .grid > *:nth-child(8) { animation-delay: .38s; }
+  #view.entering .grid > *:nth-child(n+9) { animation-delay: .42s; }
+
+  /* Dialogs and toasts */
+  dialog[open] { animation: dlg-in .32s var(--ease-out); }
+  dialog[open]::backdrop { animation: backdrop-in .25s ease-out; }
+  .toast { transition: opacity .2s, transform .45s var(--ease-spring); transform: translate(-50%, 24px) scale(.96); }
+  .toast.show { transform: translate(-50%, 0) scale(1); }
+
+  /* Tab bar: the active pill grows in, icons give a little squeeze when tapped */
+  .tabbar a.active::before { animation: pill-in .35s var(--ease-out); }
+  .tabbar a svg { transition: transform .2s var(--ease-spring); }
+  .tabbar a:active svg { transform: scale(.86); }
+  .tabbar a.active svg { transform: translateY(-1px); }
+
+  /* Selecting a tile: the check pops */
+  .tile.selectable.on .check { animation: pop .35s var(--ease-spring); }
+  .tile.selectable { transition: border-color .2s, box-shadow .2s, transform .2s var(--ease-out); }
+
+  /* Fill bar grows to its level */
+  @keyframes fill-grow { from { transform: scaleX(0); } }
+  #view.entering .fill span { transform-origin: left center; animation: fill-grow .9s .3s var(--ease-out) both; }
+
+  /* Unread dot breathes once to catch the eye */
+  @keyframes nudge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); } }
+  .dot:not([hidden]) { animation: nudge .6s var(--ease-spring) 2 .4s; }
+}

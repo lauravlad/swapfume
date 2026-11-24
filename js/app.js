@@ -54,6 +54,12 @@
   }
   const go = (path) => { if (location.hash === "#" + path) route(); else location.hash = path; };
   const setView = (content) => { view.innerHTML = val(content); };
+  // While a page is appearing, its cards and tiles rise in one after another (CSS; off with reduced motion).
+  let enterTimer;
+  function markEntering() {
+    view.classList.add("entering"); clearTimeout(enterTimer);
+    enterTimer = setTimeout(() => view.classList.remove("entering"), 2500);
+  }
   const loading = () => setView(html`<div class="spinner" role="progressbar" aria-label="Loading"></div>`);
 
   const modal = $("#modal");
@@ -80,8 +86,12 @@
   const PALETTE = ["#E8C4C0", "#D9B98A", "#C5D2BA", "#CDC2DD", "#EFD7AE", "#C3D4DB", "#E2BECB", "#D7C9B6"];
   const hash = (s) => { let h = 5381; for (const c of String(s)) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0; return h; };
 
-  // Scent families: liquid tint for the illustrated bottles and the family chip.
-  const FAMILY_COLOR = { floral: "#EBC3CB", woody: "#C8A57E", amber: "#D9A35B", citrus: "#EED67E", fresh: "#BFDCE3", aquatic: "#A9CCE3", green: "#B5D0A0", fruity: "#EBA9AE", gourmand: "#D6B08A", musky: "#D9C8B8", leather: "#9C735C", aromatic: "#BACBAB", chypre: "#ADB68D", "fougère": "#9EC2A2" };
+  // Scent families: liquid tint for the illustrated bottles, the tile glow and the family chip.
+  // Colour theory: the families follow the fragrance wheel (fresh -> floral -> amber -> woody), laid
+  // around the colour wheel in that order at a similar soft lightness, so they read as one set but are
+  // easy to tell apart: citrus yellow, green, herb, aqua, blue, lavender, lilac musk, pink floral,
+  // coral fruit, orange amber, caramel gourmand, olive chypre, wood brown, dark leather.
+  const FAMILY_COLOR = { citrus: "#F4D35E", green: "#A6D36F", aromatic: "#7DC7A0", fresh: "#86D3D6", aquatic: "#8DB8EE", "fougère": "#A9A6E6", musky: "#CDB7DD", floral: "#F2A2C0", fruity: "#F79A8E", amber: "#E5944A", gourmand: "#EBC08F", chypre: "#B8B56A", woody: "#B88A62", leather: "#8E6248" };
   const tint = (p) => FAMILY_COLOR[p?.family] || PALETTE[hash((p?.brand || "") + (p?.name || "")) % PALETTE.length];
   let svgId = 0;
   // Drawn in the app (no product photos). Full bottles get one of five shapes, picked from the perfume's name.
@@ -112,7 +122,7 @@
   const classicChip = (p) => p?.is_classic ? html`<span class="pill gold" title="Released before 2000 and still sold today">Classic</span>` : "";
   function familyChip(p) {
     if (!p?.family) return "";
-    return html`<span class="fam"><span class="fam-dot" style="background:${tint(p)}" aria-hidden="true"></span>${p.family}</span>`;
+    return html`<span class="fam" style="--tint:${tint(p)}"><span class="fam-dot" style="background:${tint(p)}" aria-hidden="true"></span>${p.family}</span>`;
   }
   // A short "key notes" line: one from each layer first, then the rest, up to 4.
   function shortNotes(p, max = 4) {
@@ -160,7 +170,7 @@
     const art = i.photo_url ? html`<img src="${i.photo_url}" alt="Photo of ${pTitle(p)}" loading="lazy">` : bottleSvg(p, i.size);
     const inner = html`
       <div class="art" style="--tint:${tint(p)}">${art}</div>
-      <div class="corner"><span class="pill ${i.size === "full" ? "rose" : i.size === "decant" ? "gold" : ""}">${SIZE_LABEL[i.size]}</span>${(i.quantity ?? 1) > 1 ? html`<span class="pill qty" title="${i.quantity} available">×${i.quantity}</span>` : ""}</div>
+      <div class="corner"><span class="pill ${i.size === "full" ? "rose" : i.size === "decant" ? "gold" : "teal"}">${SIZE_LABEL[i.size]}</span>${(i.quantity ?? 1) > 1 ? html`<span class="pill qty" title="${i.quantity} available">×${i.quantity}</span>` : ""}</div>
       <div class="body">
         <span class="brand">${p?.brand}</span>
         ${select ? html`<span class="pname">${p?.name}</span>` : html`<a class="pname" href="#/perfume/${p?.id}">${p?.name}</a>`}
@@ -2242,6 +2252,7 @@
     const hit = routes.find(([re]) => re.test(path)) || routes[0];
     const m = path.match(hit[0]) || [];
     $$("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === hit[2]));
+    markEntering();
     loading();
     try {
       if (m[1]) await hit[1](decodeURIComponent(m[1]), params); else await hit[1](params);
@@ -2266,6 +2277,9 @@
   }
 
   window.addEventListener("hashchange", route);
+  // The top bar gets a soft shadow once the page scrolls under it.
+  const onScroll = () => document.body.classList.toggle("scrolled", window.scrollY > 4);
+  window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-ask]"); if (!b) return;
     e.preventDefault();
