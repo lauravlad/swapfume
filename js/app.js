@@ -54,6 +54,13 @@
   }
   const go = (path) => { if (location.hash === "#" + path) route(); else location.hash = path; };
   const setView = (content) => { view.innerHTML = val(content); };
+  // Each page gets its own browser-tab title from its main heading ("Santal 33 · Swapfume"),
+  // so tabs, bookmarks, history and screen readers can tell pages apart.
+  const HOME_TITLE = "Swapfume — Swap the scents you love";
+  function setTitle() {
+    const h = view.querySelector("h1"), t = h?.textContent.replace(/\s+/g, " ").trim();
+    document.title = t ? `${t} · Swapfume` : HOME_TITLE;
+  }
   // While a page is appearing, its cards and tiles rise in one after another (CSS; off with reduced motion).
   let enterTimer;
   function markEntering() {
@@ -167,9 +174,13 @@
 
   function itemTile(i, { owner = false, mine = false, select = null, checked = false } = {}) {
     const p = i.perfume;
-    const art = i.photo_url ? html`<img src="${i.photo_url}" alt="Photo of ${pTitle(p)}" loading="lazy">` : bottleSvg(p, i.size);
+    // The listing's own photo; else, for full bottles, the perfume's catalog or newest member photo
+    // (marked "Example photo"); else the drawn bottle. Samples and decants keep the drawn vial.
+    const example = !i.photo_url && i.size === "full" && (p?.image_url || p?.member_photo_url);
+    const art = i.photo_url ? html`<img src="${i.photo_url}" alt="Photo of ${pTitle(p)}" loading="lazy">`
+      : example ? html`<img src="${example}" alt="Example photo of ${pTitle(p)}" loading="lazy"><span class="example-tag">Example photo</span>` : bottleSvg(p, i.size);
     const inner = html`
-      <div class="art" style="--tint:${tint(p)}">${art}</div>
+      ${!select && p?.id ? html`<a class="art" href="#/perfume/${p.id}" style="--tint:${tint(p)}" tabindex="-1" aria-hidden="true">${art}</a>` : html`<div class="art" style="--tint:${tint(p)}">${art}</div>`}
       <div class="corner"><span class="pill ${i.size === "full" ? "rose" : i.size === "decant" ? "gold" : "teal"}">${SIZE_LABEL[i.size]}</span>${(i.quantity ?? 1) > 1 ? html`<span class="pill qty" title="${i.quantity} available">×${i.quantity}</span>` : ""}</div>
       <div class="body">
         <span class="brand">${p?.brand}</span>
@@ -334,14 +345,14 @@
     });
   }
 
-  function reportDialog({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, what, prefill = "" }) {
+  function reportDialog({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, targetPerfumePhotoId, what, prefill = "" }) {
     openModal(html`<form class="dlg" id="repForm"><h3>Report ${what}</h3>
       <p class="muted small">Reports go privately to the admins. The person is not told who reported them.</p>
       <label for="reason">What happened?</label><textarea id="reason" required minlength="3" maxlength="1000" placeholder="e.g. Never shipped, fake bottle, rude messages…">${prefill}</textarea>
       <div class="dlg-actions"><button type="button" class="btn secondary" data-close>Cancel</button><button class="btn" id="repSend">Send report</button></div></form>`,
     (m) => $("#repForm", m).addEventListener("submit", (e) => {
       e.preventDefault();
-      run($("#repSend", m), async () => { await api.report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, reason: $("#reason", m).value }); modal.close(); toast("Thank you. An admin will take a look."); });
+      run($("#repSend", m), async () => { await api.report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, targetPerfumePhotoId, reason: $("#reason", m).value }); modal.close(); toast("Thank you. An admin will take a look."); });
     }));
   }
 
@@ -809,7 +820,7 @@
     const LIMIT = 120;
     const list = await api.searchCatalog(q, { limit: LIMIT, sort, perfumer });
     $("#cres").innerHTML = val(list.length ? html`<p class="small muted">${list.length === LIMIT ? `First ${LIMIT} results — search to narrow down.` : `${list.length} perfume${list.length === 1 ? "" : "s"}`}</p>
-      <ul class="list card catalog-list">${list.map((p) => html`<li class="row" style="flex-wrap:nowrap;gap:12px"><div class="mini-bottle">${bottleSvg(p, "full")}</div>
+      <ul class="list card catalog-list">${list.map((p) => html`<li class="row" style="flex-wrap:nowrap;gap:12px"><div class="mini-bottle">${p.image_url || p.member_photo_url ? html`<img src="${p.image_url || p.member_photo_url}" alt="" loading="lazy">` : bottleSvg(p, "full")}</div>
         <div class="grow"><div class="brand">${p.brand}</div><a class="pname" href="#/perfume/${p.id}">${p.name}</a> <span class="muted small">${p.concentration}${p.year ? " · " + p.year : ""}</span>
           <div class="row small" style="gap:8px;margin-top:2px">${ratingBadge(p)}${familyChip(p)}${classicChip(p)}${p.perfumers?.length ? html`<span class="muted">by ${perfumerLinks(p)}</span>` : ""}</div></div></li>`)}</ul>`
       : html`<div class="empty"><h3>No match</h3><p>Not in the catalog yet? Suggest it and an admin will add it.</p><a class="btn secondary" href="#/request?name=${encodeURIComponent(q)}">Suggest a perfume</a></div>`);
@@ -1183,29 +1194,55 @@
     }
   }
 
+  // One member photo, big, with who shared it and what you can do with it.
+  function memberPhotoDialog(p, g) {
+    if (!g) return;
+    const mine = g.user_id === state.uid, admin = !!state.profile?.is_admin, who = g.user?.display_name || "a member";
+    openModal(html`<div class="dlg photo-dlg"><img class="photo-big" src="${g.image_url}" alt="${pTitle(p)}, photo by ${who}">
+      <p class="small muted" style="margin:10px 0 0">Photo by ${g.user ? html`<a href="#/u/${g.user_id}" data-close>${who}</a>` : who} · ${fmtDate(g.created_at)} · from ${g.source === "post" ? "a post" : "a listing"}${g.is_hidden ? " · hidden" : ""}</p>
+      <div class="dlg-actions">${mine || admin ? html`<button class="btn small danger" id="phDel">Remove photo</button>` : ""}
+        ${admin && !mine ? html`<button class="btn small secondary" id="phHide">${g.is_hidden ? "Unhide" : "Hide"}</button>` : ""}
+        ${mine ? "" : html`<button class="btn small ghost" id="phRep">Report</button>`}<button class="btn small secondary" data-close>Close</button></div></div>`,
+    (m) => {
+      const del = $("#phDel", m);
+      if (del) del.addEventListener("click", async () => {
+        if (!(await confirmBox("Remove this photo?", "It disappears from this perfume's photos. The listing or post it came from is not changed.", "Remove"))) return;
+        run(null, async () => { await api.deletePerfumePhoto(g.id); toast("Photo removed."); route(); });
+      });
+      const hide = $("#phHide", m);
+      if (hide) hide.addEventListener("click", () => run(hide, async () => { await api.setPerfumePhotoHidden(g.id, !g.is_hidden); modal.close(); toast(g.is_hidden ? "Photo visible again." : "Photo hidden."); route(); }));
+      const rep = $("#phRep", m);
+      if (rep) rep.addEventListener("click", () => reportDialog({ targetUserId: g.user_id, targetPerfumePhotoId: g.id, what: "this photo" }));
+    });
+  }
+
   async function pagePerfume(id, params) {
     const p = await api.getPerfume(id);
     if (!p) return setView(html`<div class="empty"><h3>Perfume not found</h3></div>`);
-    const [items, wishes, mineW, memberPhoto, myPhoto] = await Promise.all([
+    const [items, wishes, mineW, gallery, myPhoto] = await Promise.all([
       api.listItems({ tradeableOnly: true, perfumeIds: [p.id], excludeOwnerId: state.uid, country: myCC() }),
-      api.listWishes({ perfumeIds: [p.id], country: myCC() }), api.listWishes({ userId: state.uid }), api.latestMemberPhoto(p.id),
+      api.listWishes({ perfumeIds: [p.id], country: myCC() }), api.listWishes({ userId: state.uid }), api.listPerfumePhotos(p.id).catch(() => []),
       api.myPendingPhoto(p.id).catch(() => null)]);
     const onMyList = mineW.find((w) => w.perfume_id === p.id);
     const isAdmin = !!state.profile?.is_admin;
-    // Picture: admin-set catalog photo (with rights) > newest member photo > drawn bottle.
+    // Picture: admin-set catalog photo (with rights) > newest member photo (migration 024) > drawn bottle.
+    const memberPhoto = gallery.find((g) => !g.is_hidden);
     let pic, caption = "";
     if (p.image_url) { pic = html`<img src="${p.image_url}" alt="${pTitle(p)}">`; caption = p.image_credit ? (/^photo\b/i.test(p.image_credit) ? p.image_credit : `Photo: ${p.image_credit}`) : "Catalog photo"; }
-    else if (memberPhoto) { pic = html`<img src="${memberPhoto.photo_url}" alt="A member's bottle of ${pTitle(p)}">`; caption = `Member photo by ${memberPhoto.owner?.display_name || "a member"}`; }
+    else if (memberPhoto) { pic = html`<img src="${memberPhoto.image_url}" alt="A member's bottle of ${pTitle(p)}">`; caption = `Member photo by ${memberPhoto.user?.display_name || "a member"}`; }
     else { pic = bottleSvg(p, "full"); caption = "Illustration"; }
     setView(html`<div class="card perfume-hero">
         <div class="hero-side"><figure class="hero-pic" style="--tint:${tint(p)}">${pic}<figcaption>${caption}</figcaption></figure>
           ${myPhoto ? html`<p class="small muted center" style="margin:6px 0 0">Your photo is waiting for an admin to approve it.</p>`
-            : p.status === "approved" ? html`<button class="btn small ${p.image_url ? "ghost" : "secondary"} photo-cta" id="addPhoto">${CAMERA}<span>${p.image_url ? "Suggest a better photo" : "Be the first to add a photo"}</span></button>` : ""}</div>
+            : p.status === "approved" ? html`<button class="btn small ${p.image_url ? "ghost" : "secondary"} photo-cta" id="addPhoto">${CAMERA}<span>${p.image_url || memberPhoto ? "Suggest a better photo" : "Be the first to add a photo"}</span></button>` : ""}</div>
         <div><div class="brand">${p.brand}</div><h1 style="margin:2px 0">${p.name}</h1>
           <p class="muted" style="margin:0 0 8px">${p.concentration} · ${p.year || "Year unknown"}${p.status !== "approved" ? " · awaiting approval" : ""}</p>
           ${p.perfumers?.length ? html`<p style="margin:0 0 6px">Perfumer: ${perfumerLinks(p)}</p>` : ""}
           <div class="row" style="gap:6px">${ratingBadge(p)}${familyChip(p)}${classicChip(p)}</div>
           <div class="row" style="margin-top:12px"><button class="btn" id="iHave">I have this</button>${onMyList ? html`<span class="pill rose">On your wishlist</span>` : html`<button class="btn secondary" id="iWant">I want this</button>`}</div></div></div>
+      ${gallery.length ? html`<section class="card photo-gallery" aria-labelledby="galH"><h3 id="galH" style="margin-top:0">Member photos <span class="muted small">(${gallery.length})</span></h3>
+        <div class="gal">${gallery.slice(0, 12).map((g, k) => html`<button type="button" class="gal-thumb ${g.is_hidden ? "is-hidden" : ""}" data-gal="${k}" aria-label="Open photo by ${g.user?.display_name || "a member"}"><img src="${g.image_url}" alt="" loading="lazy">${g.is_hidden ? html`<span class="pill warn">Hidden</span>` : ""}</button>`)}</div>
+        <p class="hint" style="margin-bottom:0">Real bottles from members' listings and posts.</p></section>` : ""}
       <div class="card"><div class="row between"><h3 style="margin:0">Notes</h3><button class="btn small ghost" id="suggestNotes">Suggest a correction</button></div>
         ${notesOf(p).length ? notesPyramid(p) : html`<p class="muted"><b>Details coming soon.</b> Know this one? Suggest its notes or perfumer.</p>`}
         <p class="hint">Notes are community-maintained and may be approximate.</p></div>
@@ -1228,6 +1265,7 @@
     const iw = $("#iWant"); if (iw) iw.addEventListener("click", () => run(iw, async () => { await api.addWish(p.id); toast("Added to your wishlist."); route(); }));
     $("#suggestNotes").addEventListener("click", () => notesDialog(p));
     const ap = $("#addPhoto"); if (ap) ap.addEventListener("click", () => photoSuggestDialog(p));
+    $$("[data-gal]").forEach((b) => b.addEventListener("click", () => memberPhotoDialog(p, gallery[+b.dataset.gal])));
     perfumeReviews(p, $("#prBox"), { focus: params?.get("review") === "1" });
     const yf = $("#yearForm");
     if (yf) yf.addEventListener("submit", (e) => { e.preventDefault(); run($("#yearSave"), async () => { await api.setPerfumeYear(p.id, $("#yearIn").value); toast("Year saved."); route(); }); });
@@ -1899,9 +1937,11 @@
           ${r.target_perfume_review ? html`<div class="notice" style="margin-top:6px"><div class="small">Review of <a href="#/perfume/${r.target_perfume_review.perfume_id}">${pTitle(r.target_perfume_review.perfume)}</a> by ${r.target_perfume_review.author?.display_name || "Former member"}${r.target_perfume_review.is_hidden ? " (hidden)" : ""}</div><div><span class="stars">${starsText(r.target_perfume_review.rating)}</span> ${r.target_perfume_review.body}</div></div>` : ""}
           ${r.target_post ? html`<div class="notice" style="margin-top:6px"><div class="small"><a href="#/post/${r.target_post.id}">Post</a>${r.target_post.is_hidden ? " (hidden)" : ""}</div><div>${r.target_post.body.slice(0, 400)}</div></div>` : ""}
           ${r.target_post_comment ? html`<div class="notice" style="margin-top:6px"><div class="small">Comment on <a href="#/post/${r.target_post_comment.post_id}">a post</a></div><div>${r.target_post_comment.body}</div></div>` : ""}
+          ${r.target_perfume_photo ? html`<div class="notice" style="margin-top:6px"><div class="small"><a href="#/perfume/${r.target_perfume_photo.perfume_id}">Photo on a perfume</a>${r.target_perfume_photo.is_hidden ? " (hidden)" : ""}</div><img src="${r.target_perfume_photo.image_url}" alt="Reported photo" style="max-width:160px;border-radius:10px;margin-top:6px"></div>` : ""}
           <div class="row" style="margin-top:8px">${r.status === "open" ? html`<button class="btn small secondary" data-res="${r.id}">Mark resolved</button>` : ""}
             ${r.target_post ? html`<button class="btn small secondary" data-hidep="${r.target_post.id}" data-h="${!r.target_post.is_hidden}">${r.target_post.is_hidden ? "Unhide post" : "Hide post"}</button>` : ""}
             ${r.target_post_comment ? html`<button class="btn small secondary" data-delpc="${r.target_post_comment.id}">Delete comment</button>` : ""}
+            ${r.target_perfume_photo ? html`<button class="btn small secondary" data-phide="${r.target_perfume_photo.id}" data-h="${!r.target_perfume_photo.is_hidden}">${r.target_perfume_photo.is_hidden ? "Unhide photo" : "Hide photo"}</button><button class="btn small danger" data-pdel="${r.target_perfume_photo.id}">Remove photo</button>` : ""}
             ${r.target_perfume_review ? html`<button class="btn small secondary" data-hider="${r.target_perfume_review.id}" data-h="${!r.target_perfume_review.is_hidden}">${r.target_perfume_review.is_hidden ? "Unhide review" : "Hide review"}</button>` : ""}
             ${r.target_item ? html`<button class="btn small secondary" data-hide="${r.target_item.id}" data-h="${!r.target_item.is_hidden}">${r.target_item.is_hidden ? "Unhide listing" : "Hide listing"}</button>` : ""}
             ${r.target_user && r.target_user.id !== state.uid ? html`<button class="btn small danger" data-ban="${r.target_user.id}" data-b="${!r.target_user.is_banned}">${r.target_user.is_banned ? "Unban" : "Ban"} ${r.target_user.display_name}</button>` : ""}</div></li>`)}</ul>` : html`<div class="empty"><p>No reports. Lovely.</p></div>`);
@@ -1910,6 +1950,8 @@
       $$("[data-hider]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setPerfumeReviewHidden(b.dataset.hider, b.dataset.h === "true"); route(); })));
       $$("[data-hidep]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setPostHidden(b.dataset.hidep, b.dataset.h === "true"); route(); })));
       $$("[data-delpc]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deletePostComment(b.dataset.delpc); toast("Comment deleted."); route(); })));
+      $$("[data-phide]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setPerfumePhotoHidden(b.dataset.phide, b.dataset.h === "true"); route(); })));
+      $$("[data-pdel]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deletePerfumePhoto(b.dataset.pdel); toast("Photo removed."); route(); })));
     } else if (tab === "photos") {
       const rows = await api.listPhotoSuggestions();
       ab.innerHTML = val(rows.length ? html`<p class="muted small">Approve only real photos of the bottle — no shop or brand pictures, no people or personal details. Approving replaces the perfume's current picture.</p>
@@ -1920,6 +1962,17 @@
         : html`<div class="empty"><p>No photos waiting.</p></div>`);
       $$("[data-pok]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.reviewPhotoSuggestion(b.dataset.pok, true); toast("Photo approved."); route(); })));
       $$("[data-pno]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.reviewPhotoSuggestion(b.dataset.pno, false); toast("Photo rejected."); route(); })));
+      // Every member photo kept under a perfume (migration 024): newest first, hide or remove.
+      const kept = await api.listRecentPerfumePhotos().catch(() => []);
+      ab.insertAdjacentHTML("beforeend", val(html`<h3 style="margin-top:28px">Member photos on perfumes</h3>
+        <p class="muted small">Saved automatically from listings and tagged posts. Hide or remove anything that isn't a perfume bottle, or shows people or personal details.</p>
+        ${kept.length ? html`<div class="grid photo-queue">${kept.map((g) => html`<article class="tile ${g.is_hidden ? "is-hidden" : ""}"><div class="art photo-art"><img src="${g.image_url}" alt="Member photo of ${pTitle(g.perfume)}" loading="lazy"></div>
+          <div class="body"><span class="brand">${g.perfume?.brand}</span><a class="pname" href="#/perfume/${g.perfume_id}">${g.perfume?.name}</a>
+            <span class="meta">from ${g.user?.display_name || "a member"} · ${fmtDate(g.created_at)} · ${g.source === "post" ? "post" : "listing"}${g.is_hidden ? " · hidden" : ""}</span>
+            <div class="actions"><button class="btn small secondary" data-phide="${g.id}" data-h="${!g.is_hidden}">${g.is_hidden ? "Unhide" : "Hide"}</button><button class="btn small danger" data-pdel="${g.id}">Remove</button></div></div></article>`)}</div>`
+          : html`<div class="empty"><p>No member photos yet.</p></div>`}`).toString());
+      $$("[data-phide]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.setPerfumePhotoHidden(b.dataset.phide, b.dataset.h === "true"); route(); })));
+      $$("[data-pdel]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deletePerfumePhoto(b.dataset.pdel); toast("Photo removed."); route(); })));
     } else if (tab === "import") {
       adminImport(ab);
     } else {
@@ -2457,9 +2510,9 @@
     if (pub) {
       document.body.classList.toggle("signed-out", !signedIn);
       $$("[data-nav]").forEach((a) => a.classList.toggle("active", path !== "/reset-password" && a.dataset.nav === "me"));
-      await pub[1](); view.focus({ preventScroll: true }); window.scrollTo(0, 0); return;
+      await pub[1](); view.focus({ preventScroll: true }); window.scrollTo(0, 0); setTitle(); return;
     }
-    if (!signedIn) { await pageWelcome(); return; }
+    if (!signedIn) { document.title = HOME_TITLE; await pageWelcome(); return; }
     document.body.classList.remove("signed-out");
     if (!state.profile) { setView(html`<div class="empty"><h3>We couldn't load your profile</h3><p>Please sign out and in again. If it keeps happening, contact ${CFG.SUPPORT_EMAIL}.</p><button class="btn secondary" id="so">Sign out</button></div>`); $("#so").onclick = () => api.signOut(); return; }
     if (state.profile?.is_banned) { setView(html`<div class="empty"><h3>Your account is suspended</h3><p>An admin has suspended this account. If you think this is a mistake, email ${CFG.SUPPORT_EMAIL}.</p><button class="btn secondary" id="so">Sign out</button></div>`); $("#so").onclick = () => api.signOut(); return; }
@@ -2475,7 +2528,7 @@
       console.error(e);
       if (token === routeToken) setView(html`<div class="empty"><h3>Something went wrong</h3><p>${e.message}</p><a class="btn secondary" href="#/">Back home</a></div>`);
     }
-    if (token === routeToken) { view.focus({ preventScroll: true }); window.scrollTo(0, 0); }
+    if (token === routeToken) { view.focus({ preventScroll: true }); window.scrollTo(0, 0); setTitle(); }
     refreshSwapDot();
   }
 

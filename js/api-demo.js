@@ -99,6 +99,7 @@
     seedPerfumeReviews(db, P);
     seedEvents(db);
     seedCommunity(db);
+    db.perfumePhotos = [];
     db.threads = []; db.messages = []; db.threadReads = [];
 
     // Something for the admin page to show.
@@ -224,6 +225,18 @@
     if (!db.countryRequests) { db.countryRequests = []; changed = true; }
     if (!db.threads) { db.threads = []; db.messages = []; db.threadReads = []; changed = true; }
     if (!db.posts) { seedCommunity(db); changed = true; }
+    if (!db.perfumePhotos) {
+      // Migration 024: bring in photos already on listings and tagged posts.
+      db.perfumePhotos = [];
+      const add = (perfume_id, user_id, image_url, source, created_at) => { if (image_url && perfume_id && !db.perfumePhotos.some((x) => x.perfume_id === perfume_id && x.image_url === image_url)) db.perfumePhotos.push({ id: ++db.seq, perfume_id, user_id, image_url, source, is_hidden: false, created_at }); };
+      db.items.forEach((i) => add(i.perfume_id, i.owner_id, i.photo_url, "listing", i.created_at));
+      db.posts.forEach((p) => add(p.perfume_id, p.author_id, p.photo_url, "post", p.created_at));
+      new Set(db.perfumePhotos.map((x) => x.perfume_id)).forEach((pid) => {
+        const p = db.perfumes.find((x) => x.id === pid), ph = db.perfumePhotos.filter((x) => x.perfume_id === pid).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+        if (p) p.member_photo_url = ph.image_url;
+      });
+      changed = true;
+    }
     const have = new Set(db.perfumes.map((p) => Util.perfumeKey(p.brand, p.name, p.concentration)));
     window.CATALOG_SEED.forEach((row) => {
       if (have.has(Util.perfumeKey(row[0], row[1], row[2]))) return;
@@ -292,6 +305,17 @@
   const myThread = (id) => db.threads.find((x) => x.id === Number(id) && [x.user_a, x.user_b].includes(uid)) || fail("Conversation not found.");
   const setRead = (threadId) => { const r = db.threadReads.find((x) => x.thread_id === threadId && x.user_id === uid); if (r) r.last_read_at = now(); else db.threadReads.push({ thread_id: threadId, user_id: uid, last_read_at: now() }); };
   const canSeeEvent = (e) => !!uid && (e.organizer_id === uid || isAdmin() || (!prof(uid)?.is_banned && !e.is_hidden && !blockedWith(e.organizer_id)));
+  // Member photos kept under each perfume (same rules as migration 024).
+  function refreshMemberPhoto(pid) {
+    const p = perf(pid); if (!p) return;
+    const ph = db.perfumePhotos.filter((x) => x.perfume_id === pid && !x.is_hidden && !prof(x.user_id)?.is_banned).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    p.member_photo_url = ph ? ph.image_url : null;
+  }
+  function keepPhoto(perfume_id, user_id, image_url, source) {
+    if (!image_url || db.perfumePhotos.some((x) => x.perfume_id === perfume_id && x.image_url === image_url)) return;
+    db.perfumePhotos.push({ id: ++db.seq, perfume_id, user_id, image_url, source, is_hidden: false, created_at: now() });
+    refreshMemberPhoto(perfume_id);
+  }
   const friendRow = (other) => db.friendships.find((f) => (f.user_a === uid && f.user_b === other) || (f.user_b === uid && f.user_a === other));
   const canSeePost = (p) => !!uid && (p.author_id === uid || isAdmin() || (!prof(uid)?.is_banned && !p.is_hidden && !blockedWith(p.author_id) && p.country_code === ccOf(uid)));
   const withPost = (p) => {
@@ -421,6 +445,9 @@
       db.postComments = db.postComments.filter((x) => x.user_id !== v && !theirPosts.has(x.post_id));
       db.noteSuggestions = db.noteSuggestions.filter((n) => n.suggested_by !== v);
       db.photoSuggestions = db.photoSuggestions.filter((n) => n.suggested_by !== v || n.status === "approved");
+      const theirPhotoPerfumes = new Set(db.perfumePhotos.filter((x) => x.user_id === v).map((x) => x.perfume_id));
+      db.perfumePhotos = db.perfumePhotos.filter((x) => x.user_id !== v);
+      theirPhotoPerfumes.forEach(refreshMemberPhoto);
       db.reports = db.reports.filter((r) => r.reporter_id !== v && r.target_user_id !== v);
       db.perfumes.forEach((p) => { if (p.requested_by === v) p.requested_by = null; });
       db.profiles = db.profiles.filter((p) => p.id !== v);
@@ -527,7 +554,7 @@
       if (!["sample", "decant", "full"].includes(data.size)) fail("Pick a size.");
       const photo_url = photoFile ? (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl : null;
       const i = { id: ++db.seq, owner_id: uid, perfume_id: Number(data.perfume_id), size: data.size, volume_ml: data.volume_ml ? Number(data.volume_ml) : null, fill_pct: Math.max(0, Math.min(100, Number(data.fill_pct ?? 100))), quantity: qtyOk(data.quantity ?? 1), tradeable: !!data.tradeable && qtyOk(data.quantity ?? 1) > 0, photo_url, note: String(data.note || "").slice(0, 300), is_hidden: false, created_at: now() };
-      db.items.push(i); save(); return withItem(i);
+      db.items.push(i); if (photo_url) keepPhoto(i.perfume_id, uid, photo_url, "listing"); save(); return withItem(i);
     },
     async updateItem(id, patch, photoFile) {
       const i = db.items.find((x) => x.id === Number(id) && x.owner_id === me()) || fail("Item not found.");
@@ -537,7 +564,7 @@
       if (patch.tradeable !== undefined) i.tradeable = !!patch.tradeable;
       if (patch.quantity !== undefined) i.quantity = qtyOk(patch.quantity);
       if (i.quantity === 0) i.tradeable = false; // none left = not open to trade (migration 017)
-      if (photoFile) i.photo_url = (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl;
+      if (photoFile) { i.photo_url = (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl; keepPhoto(i.perfume_id, uid, i.photo_url, "listing"); }
       save(); return withItem(i);
     },
     async deleteItem(id) { db.items = db.items.filter((x) => !(x.id === Number(id) && x.owner_id === me())); save(); },
@@ -780,12 +807,34 @@
       return out;
     },
 
-    async report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, reason }) {
+    async report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, targetPerfumePhotoId, reason }) {
       me();
       if (String(reason || "").trim().length < 3) fail("Please say briefly what is wrong.");
       db.reports.push({ id: ++db.seq, reporter_id: uid, target_user_id: targetUserId || null, target_item_id: targetItemId ? Number(targetItemId) : null, target_perfume_review_id: targetPerfumeReviewId ? Number(targetPerfumeReviewId) : null,
-        target_post_id: targetPostId ? Number(targetPostId) : null, target_post_comment_id: targetPostCommentId ? Number(targetPostCommentId) : null, reason: reason.trim().slice(0, 1000), status: "open", created_at: now() });
+        target_post_id: targetPostId ? Number(targetPostId) : null, target_post_comment_id: targetPostCommentId ? Number(targetPostCommentId) : null,
+        target_perfume_photo_id: targetPerfumePhotoId ? Number(targetPerfumePhotoId) : null, reason: reason.trim().slice(0, 1000), status: "open", created_at: now() });
       save();
+    },
+
+    // ---- Member photos kept under each perfume (migration 024) ----
+    async listPerfumePhotos(perfumeId) {
+      me();
+      return db.perfumePhotos.filter((x) => x.perfume_id === Number(perfumeId) && (isAdmin() || x.user_id === uid || (!x.is_hidden && !blockedWith(x.user_id))))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 24).map((x) => ({ ...clone(x), user: lite(x.user_id) }));
+    },
+    async listRecentPerfumePhotos() {
+      adminOnly();
+      return db.perfumePhotos.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 60)
+        .map((x) => { const p = perf(x.perfume_id); return { ...clone(x), user: lite(x.user_id), perfume: p && { id: p.id, brand: p.brand, name: p.name, concentration: p.concentration } }; });
+    },
+    async deletePerfumePhoto(id) {
+      const x = db.perfumePhotos.find((y) => y.id === Number(id)); if (!x) return;
+      if (x.user_id !== me() && !isAdmin()) fail("You can only remove your own photos.");
+      db.perfumePhotos = db.perfumePhotos.filter((y) => y !== x); refreshMemberPhoto(x.perfume_id); save();
+    },
+    async setPerfumePhotoHidden(id, hidden) {
+      adminOnly(); const x = db.perfumePhotos.find((y) => y.id === Number(id));
+      if (x) { x.is_hidden = !!hidden; refreshMemberPhoto(x.perfume_id); save(); }
     },
 
     // Notes corrections & pictures
@@ -995,6 +1044,10 @@
       db.perfumeReviews.forEach((v) => { if (v.perfume_id === dup) { v.perfume_id = keep; r.reviews++; } });
       db.noteSuggestions.forEach((x) => { if (x.perfume_id === dup) x.perfume_id = keep; });
       db.photoSuggestions.forEach((x) => { if (x.perfume_id === dup) x.perfume_id = keep; });
+      db.posts.forEach((x) => { if (x.perfume_id === dup) x.perfume_id = keep; });
+      db.perfumePhotos = db.perfumePhotos.filter((x) => !(x.perfume_id === dup && db.perfumePhotos.some((y) => y.perfume_id === keep && y.image_url === x.image_url)));
+      db.perfumePhotos.forEach((x) => { if (x.perfume_id === dup) x.perfume_id = keep; });
+      refreshMemberPhoto(keep);
       k.year = k.year ?? d.year; k.family = k.family || d.family;
       ["notes_top", "notes_heart", "notes_base", "perfumers"].forEach((f) => { if (!(k[f] || []).length) k[f] = d[f] || []; });
       if (!k.image_url) { k.image_url = d.image_url; k.image_credit = d.image_credit; }
@@ -1014,10 +1067,11 @@
       return db.reports.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).map((r) => {
         const it = r.target_item_id && db.items.find((i) => i.id === r.target_item_id);
         const pr = r.target_perfume_review_id && db.perfumeReviews.find((x) => x.id === r.target_perfume_review_id);
+        const ph = r.target_perfume_photo_id && db.perfumePhotos.find((x) => x.id === r.target_perfume_photo_id);
         const po = r.target_post_id && db.posts.find((x) => x.id === r.target_post_id);
         const pc = r.target_post_comment_id && db.postComments.find((x) => x.id === r.target_post_comment_id);
         return { ...clone(r), reporter: lite(r.reporter_id), target_user: lite(r.target_user_id), target_item: it ? withItem(it) : null,
-          target_post: po ? clone(po) : null, target_post_comment: pc ? clone(pc) : null,
+          target_post: po ? clone(po) : null, target_post_comment: pc ? clone(pc) : null, target_perfume_photo: ph ? clone(ph) : null,
           target_perfume_review: pr ? { ...clone(pr), perfume: clone(perf(pr.perfume_id)), author: lite(pr.user_id) } : null };
       });
     },
@@ -1028,6 +1082,7 @@
       const p = prof(userId); if (!p) return;
       p.is_banned = !!banned;
       db.perfumeReviews.filter((r) => r.user_id === userId).forEach((r) => recalcRating(db, r.perfume_id));
+      new Set(db.perfumePhotos.filter((x) => x.user_id === userId).map((x) => x.perfume_id)).forEach(refreshMemberPhoto);
       if (banned) {
         db.items.forEach((i) => { if (i.owner_id === userId) i.tradeable = false; });
         db.swaps.forEach((s) => { if (s.status === "proposed" && (s.proposer_id === userId || s.recipient_id === userId)) { s.status = "cancelled"; s.updated_at = now(); } });
@@ -1180,7 +1235,7 @@
       if (db.posts.filter((p) => p.author_id === uid && p.created_at > new Date(Date.now() - 864e5).toISOString()).length >= 20) fail("You've posted a lot today. Please come back tomorrow.");
       const photo_url = photoFile ? (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl : null;
       const p = { id: ++db.seq, author_id: uid, country_code: ccOf(uid), kind, body: body.slice(0, 1000), perfume_id: perfumeId ? Number(perfumeId) : null, photo_url, is_hidden: false, created_at: now() };
-      db.posts.push(p); save(); return p.id;
+      db.posts.push(p); if (photo_url && p.perfume_id) keepPhoto(p.perfume_id, uid, photo_url, "post"); save(); return p.id;
     },
     async deletePost(id) {
       const p = db.posts.find((x) => x.id === Number(id)); if (!p) return;

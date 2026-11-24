@@ -329,13 +329,27 @@
         return out;
       },
 
-      async report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, reason }) {
+      async report({ targetUserId, targetItemId, targetPerfumeReviewId, targetPostId, targetPostCommentId, targetPerfumePhotoId, reason }) {
         const row = { reporter_id: me(), target_user_id: targetUserId || null, target_item_id: targetItemId ? Number(targetItemId) : null, reason: String(reason || "").trim() };
         if (targetPerfumeReviewId) row.target_perfume_review_id = Number(targetPerfumeReviewId);
         if (targetPostId) row.target_post_id = Number(targetPostId);
         if (targetPostCommentId) row.target_post_comment_id = Number(targetPostCommentId);
+        if (targetPerfumePhotoId) row.target_perfume_photo_id = Number(targetPerfumePhotoId);
         check(await sb.from("reports").insert(row));
       },
+
+      // ---- Member photos kept under each perfume (migration 024) ----
+      async listPerfumePhotos(perfumeId) {
+        me();
+        return check(await sb.from("perfume_photos").select(`*, user:profiles!perfume_photos_user_id_fkey(id,display_name)`)
+          .eq("perfume_id", Number(perfumeId)).order("created_at", { ascending: false }).limit(24));
+      },
+      async listRecentPerfumePhotos() {
+        return check(await sb.from("perfume_photos").select(`*, user:profiles!perfume_photos_user_id_fkey(id,display_name), perfume:perfumes(id,brand,name,concentration)`)
+          .order("created_at", { ascending: false }).limit(60));
+      },
+      async deletePerfumePhoto(id) { check(await sb.from("perfume_photos").delete().eq("id", Number(id))); },
+      async setPerfumePhotoHidden(id, hidden) { check(await sb.rpc("admin_set_perfume_photo_hidden", { p_id: Number(id), p_hidden: !!hidden })); },
 
       // Perfume reviews (stars + tags)
       async listPerfumeReviews(perfumeId) {
@@ -424,7 +438,7 @@
       },
       async reviewPerfume(id, approve) { check(await sb.rpc("admin_review_perfume", { p_id: Number(id), p_approve: !!approve })); },
       async listReports() {
-        return check(await sb.from("reports").select(`*, reporter:profiles!reports_reporter_id_fkey(${LITE}), target_user:profiles!reports_target_user_id_fkey(${LITE}), target_item:collection_items(*, perfume:perfumes(*)), target_perfume_review:perfume_reviews(*, perfume:perfumes(*), author:profiles!perfume_reviews_user_id_fkey(id,display_name)), target_post:posts(id,body,kind,is_hidden,author_id), target_post_comment:post_comments(id,body,post_id,user_id)`).order("created_at", { ascending: false }));
+        return check(await sb.from("reports").select(`*, reporter:profiles!reports_reporter_id_fkey(${LITE}), target_user:profiles!reports_target_user_id_fkey(${LITE}), target_item:collection_items(*, perfume:perfumes(*)), target_perfume_review:perfume_reviews(*, perfume:perfumes(*), author:profiles!perfume_reviews_user_id_fkey(id,display_name)), target_post:posts(id,body,kind,is_hidden,author_id), target_post_comment:post_comments(id,body,post_id,user_id), target_perfume_photo:perfume_photos(id,image_url,perfume_id,is_hidden)`).order("created_at", { ascending: false }));
       },
       async resolveReport(id) { check(await sb.from("reports").update({ status: "resolved" }).eq("id", id)); },
       async setBan(userId, banned) { check(await sb.rpc("admin_set_ban", { p_user: userId, p_banned: !!banned })); },

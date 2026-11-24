@@ -949,6 +949,37 @@ body.scrolled .topbar { box-shadow: 0 8px 24px -18px rgba(30, 26, 34, .45); }
   .dot:not([hidden]) { animation: nudge .6s var(--ease-spring) 2 .4s; }
 }
 
+/* Review fixes (2026-11-24): comfortable tap sizes and readable tab labels */
+@media (pointer: coarse) {
+  .btn.small { min-height: 44px; padding: 8px 14px; }
+  .linklike { min-height: 32px; }
+}
+.tabbar a { font-size: .72rem; letter-spacing: -.005em; }
+@media (max-width: 360px) { .tabbar a { font-size: .66rem; } }
+a.art { text-decoration: none; color: inherit; }
+@media (max-width: 560px) { .share-row .net-btn { flex: 1 1 0; min-width: 0; justify-content: center; padding-left: 8px; padding-right: 8px; } }
+
+/* Background picture (2026-11-24): Laura's own shelf of bottles on teal silk, pre-blurred
+   (icons/bg-shelf.jpg, ~100 KB) so labels become soft colour. Very faint, fixed behind every
+   page; cards and panels stay solid so text never sits directly on the busy part. */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: url("../icons/bg-shelf.jpg?v=2") center / cover no-repeat; opacity: .2; }
+@media (prefers-color-scheme: dark) { body::before { opacity: .26; } }
+
+/* Member photos kept under each perfume (2026-11-24) */
+.photo-gallery .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.gal-thumb { position: relative; padding: 0; border: 0; border-radius: 12px; overflow: hidden; aspect-ratio: 1; cursor: zoom-in; background: var(--surface-2); }
+.gal-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s var(--ease-out); }
+.gal-thumb.is-hidden img { opacity: .45; }
+.gal-thumb .pill { position: absolute; left: 4px; bottom: 4px; }
+@media (hover: hover) { .gal-thumb:hover img { transform: scale(1.06); } }
+.photo-dlg { padding: 12px 12px 16px; }
+.photo-big { display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 14px; background: var(--surface-2); }
+.tile .art { position: relative; }
+.example-tag { position: absolute; right: 8px; bottom: 8px; font: 600 .7rem var(--sans); padding: 3px 8px; border-radius: 999px; background: rgba(30, 26, 34, .62); color: #fff; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.mini-bottle img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.tile.is-hidden { opacity: .6; }
+
 /* =====================================================================
    COMMUNITY (2026-11-24): feed posts, composer, comments, friends.
    Post kinds reuse the size/brand colours: Scent of the day = raspberry,
