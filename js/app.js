@@ -563,7 +563,29 @@
     let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { /* older browser */ }
     const guessCC = tz === "Europe/Bucharest" ? "RO"
       : /^America\/(Toronto|Vancouver|Montreal|Edmonton|Winnipeg|Halifax|Regina|St_Johns|Moncton|Whitehorse|Yellowknife|Iqaluit|Glace_Bay|Goose_Bay)/.test(tz) ? "CA" : "US";
-    const PERSON = raw(`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>`);
+    // Two friendly illustrated members (drawn here, not photos of real people).
+    const AVATAR_L = raw(`<svg class="avatar" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M15 31c0-13 7-20 17-20s17 7 17 20v19H15z" fill="#4A2E23"/>
+      <path d="M9 64c0-12 10-19 23-19s23 7 23 19z" fill="#FBE3E9"/>
+      <path d="M27 45c1.5 3 8.5 3 10 0" fill="none" stroke="#F2A2C0" stroke-width="2"/>
+      <rect x="28" y="37" width="8" height="9" rx="3.5" fill="#E2AE8B"/>
+      <ellipse cx="32" cy="29" rx="11" ry="12" fill="#F3CBAA"/>
+      <path d="M21 28c1-9 6-13 12-13 7 0 11 5 11 11-6 0-12-2-16-7-1 4-4 7-7 9z" fill="#4A2E23"/>
+      <circle cx="27.5" cy="30" r="1.4" fill="#3A2620"/><circle cx="36.5" cy="30" r="1.4" fill="#3A2620"/>
+      <circle cx="24.5" cy="34" r="2.2" fill="#F08FA2" opacity=".55"/><circle cx="39.5" cy="34" r="2.2" fill="#F08FA2" opacity=".55"/>
+      <path d="M28.5 35.2q3.5 3 7 0" fill="none" stroke="#8A3B3B" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="21.2" cy="32" r="1.3" fill="#F4D35E"/>
+    </svg>`);
+    const AVATAR_R = raw(`<svg class="avatar" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M9 64c0-12 10-19 23-19s23 7 23 19z" fill="#F6D38A"/>
+      <path d="M26 45l6 5 6-5" fill="none" stroke="#E5944A" stroke-width="2" stroke-linejoin="round"/>
+      <rect x="28" y="37" width="8" height="9" rx="3.5" fill="#94603F"/>
+      <ellipse cx="32" cy="29" rx="11" ry="12" fill="#AE7350"/>
+      <g fill="#2B1D17"><circle cx="23" cy="22" r="5"/><circle cx="28" cy="17.5" r="5.2"/><circle cx="34" cy="16.5" r="5.2"/><circle cx="39.5" cy="19.5" r="5"/><circle cx="42" cy="24.5" r="3.6"/><circle cx="21.5" cy="26" r="3"/></g>
+      <g fill="none" stroke="#2B1D17" stroke-width="1.4"><circle cx="27.3" cy="30" r="3.6"/><circle cx="36.7" cy="30" r="3.6"/><path d="M30.9 29.6h2.2"/></g>
+      <circle cx="27.3" cy="30.2" r="1.3" fill="#2B1D17"/><circle cx="36.7" cy="30.2" r="1.3" fill="#2B1D17"/>
+      <path d="M28.3 35.3q3.7 3.2 7.4 0" fill="none" stroke="#4A2418" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>`);
     setView(html`<section class="welcome circle">
       <div class="w-top">
         <span class="wordmark"><img src="icons/icon.svg" alt="" class="wordmark-mark">Swapfume<span class="wordmark-tag">Sharing is caring</span></span>
@@ -578,7 +600,7 @@
           <svg class="orbit" viewBox="0 0 420 200" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="2 9">
             <path d="M70 88 C150 14 270 14 350 88" stroke="var(--teal-deco)"/><path d="M350 112 C270 186 150 186 70 112" stroke="var(--accent-fill)"/>
           </svg>
-          <span class="w-who l">${PERSON}</span><span class="w-who r">${PERSON}</span>
+          <span class="w-who l">${AVATAR_L}</span><span class="w-who r">${AVATAR_R}</span>
           <span class="w-tok t1">${bottleSvg({ brand: "a", name: "c" }, "full")}</span><span class="w-tok t2">${bottleSvg({ brand: "b", name: "x" }, "decant")}</span>
         </div>
       </div>

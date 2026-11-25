@@ -803,6 +803,10 @@ dialog { background: var(--surface); color: var(--ink); }
 .w-who svg { width: 30px; height: 30px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; }
 .w-who.l { left: 0; background: var(--accent-fill); }
 .w-who.r { right: 0; background: #0E6767; }
+.w-who { overflow: hidden; }
+.w-who svg.avatar { width: 100%; height: 100%; stroke: none; display: block; }
+.w-who.l { background: radial-gradient(circle at 50% 35%, #F7B6C8, var(--accent-fill)); }
+.w-who.r { background: radial-gradient(circle at 50% 35%, #6FC3C0, #0E6767); }
 .w-tok { position: absolute; left: 50%; top: 50%; width: 36px; height: 60px; margin: -30px 0 0 -18px; }
 .w-tok svg { width: 100%; height: 100%; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .2)); }
 .w-tok.t1 { transform: translate(-92px, -40px); }
@@ -962,9 +966,18 @@ a.art { text-decoration: none; color: inherit; }
 /* Background picture (2026-11-24): Laura's own shelf of bottles on teal silk, pre-blurred
    (icons/bg-shelf.jpg, ~100 KB) so labels become soft colour. Very faint, fixed behind every
    page; cards and panels stay solid so text never sits directly on the busy part. */
+/* Replaced the same day: a see-through dandelion whose seeds fly up and away (icons/bg-dandelion.svg,
+   drawn line art). The SVG is used as a mask, so its colour comes from --dandelion and follows dark mode. */
 body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: url("../icons/bg-shelf.jpg?v=2") center / cover no-repeat; opacity: .2; }
-@media (prefers-color-scheme: dark) { body::before { opacity: .26; } }
+  background: var(--dandelion, #0E6767);
+  -webkit-mask: url("../icons/bg-dandelion.svg?v=2") center / cover no-repeat;
+          mask: url("../icons/bg-dandelion.svg?v=2") center / cover no-repeat;
+  opacity: .32; }
+@media (prefers-color-scheme: dark) { body::before { --dandelion: #BFE8E4; opacity: .26; } }
+@media (prefers-reduced-motion: no-preference) {
+  body::before { animation: dandelion-drift 18s ease-in-out infinite alternate; }
+}
+@keyframes dandelion-drift { from { transform: translate(0, 0) rotate(0deg); } to { transform: translate(-10px, -14px) rotate(-.6deg); } }
 
 /* Member photos kept under each perfume (2026-11-24) */
 .photo-gallery .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
