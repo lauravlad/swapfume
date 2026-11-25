@@ -687,6 +687,56 @@
     else $("#motionLib")?.addEventListener("load", () => run(false), { once: true });
   }
 
+  // ---------- Decanting guide with supply links (Amazon Associates) ----------
+  // Links appear only for countries with a tracking ID in CFG.AMAZON_TAGS; otherwise the list shows as plain text.
+  const AMAZON_STORES = { US: "amazon.com", CA: "amazon.ca" };
+  const DECANT_SUPPLIES = [
+    ["Refillable glass atomizers (5–10 ml)", "For decants. Glass keeps the scent true; pick ones with a screw-on sprayer.", "refillable glass perfume atomizer 5ml"],
+    ["Glass sample vials with sprayers (1–2 ml)", "For samples. Small enough to send several in one envelope.", "2ml glass perfume sample vials spray"],
+    ["Decanting kit: mini funnels and pipettes", "Clean transfers from a splash bottle or an unscrewed atomizer.", "perfume decanting kit funnel pipette"],
+    ["Spray-to-spray transfer tool", "Fills an atomizer straight from a bottle's sprayer, no unscrewing.", "perfume decant transfer tool"],
+    ["Small waterproof labels", "Write the perfume, concentration and fill date on every vial.", "small waterproof labels for vials"],
+    ["Mini zip bags", "One bag per vial, so a leak stays inside.", "small zip lock bags 2x3"],
+    ["Small padded mailers", "Cushioned envelopes for samples and small decants.", "small bubble mailers padded envelopes"],
+  ];
+  function supplyLink(query) {
+    const cc = state.profile?.country_code || "US", tag = (CFG.AMAZON_TAGS || {})[cc], store = AMAZON_STORES[cc];
+    return tag && store ? `https://www.${store}/s?k=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}` : "";
+  }
+  const hasSupplyLinks = () => !!supplyLink("x");
+  const AMAZON_DISCLOSURE = "As an Amazon Associate, Swapfume earns from qualifying purchases. It doesn't change the price you pay.";
+  function pageDecanting() {
+    const links = hasSupplyLinks();
+    setView(html`<div class="narrow" style="max-width:720px;margin:0 auto">
+      <div class="page-head"><div class="eyebrow">Guide</div><h1>Decant and ship like a pro</h1>
+        <p>Sharing a few millilitres is the heart of Swapfume. Here's how to make clean decants that arrive safely.</p></div>
+      <div class="card"><h3>Making a decant</h3>
+        <ol class="guide-steps">
+          <li><b>Start clean.</b> Use new or washed and fully dried vials. Leftover alcohol or water changes the scent.</li>
+          <li><b>Transfer slowly.</b> Spray straight into an atomizer with a transfer tool, or use a small funnel or pipette. Work over a paper towel.</li>
+          <li><b>Don't overfill.</b> Leave a little air at the top so the sprayer seals and nothing leaks when pressure changes in transit.</li>
+          <li><b>Label it.</b> Perfume name, concentration and the date you filled it.</li>
+          <li><b>Describe it honestly.</b> List the real amount and say if it came from a partly used bottle.</li>
+        </ol></div>
+      <div class="card"><h3>Packing and shipping</h3>
+        <ul class="tips">
+          <li>Tape the sprayer cap shut and put each vial in its own small zip bag.</li>
+          <li>Cushion glass so it can't knock together: bubble wrap or a padded mailer.</li>
+          <li>Perfume is flammable. Ship it the way your carrier allows for perfume (in the US, by ground only).</li>
+          <li>Sending to another country? Check your carrier's and both countries' rules first: many postal services don't accept perfume in international mail.</li>
+        </ul></div>
+      <div class="card"><h3>Helpful supplies</h3>
+        <p class="small muted">${links ? "Links open Amazon in a new tab." : "What's worth having on hand."}</p>
+        <ul class="supply-list">${DECANT_SUPPLIES.map(([name, why, q]) => {
+          const u = supplyLink(q);
+          return html`<li>${u ? html`<a href="${u}" target="_blank" rel="sponsored noopener noreferrer"><b>${name}</b> ↗</a>` : html`<b>${name}</b>`}<span class="small muted">${why}</span></li>`;
+        })}</ul>
+        ${links ? html`<p class="hint" style="margin-top:12px">${AMAZON_DISCLOSURE}</p>` : ""}
+      </div>
+      <p style="margin-top:16px"><a href="${state.uid ? "#/collection" : "#/"}">← Back to Swapfume</a></p>
+    </div>`);
+  }
+
   // "Add my country": anyone outside the open countries joins a waitlist (migration 016).
   const GLOBE = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 12h17M12 3.5c2.6 2.4 2.6 14.6 0 17M12 3.5c-2.6 2.4-2.6 14.6 0 17" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`);
   function countryRequestForm() {
@@ -1666,7 +1716,7 @@
     else if (s.status === "accepted") {
       action = html`<div class="row">${!info.my.shipped ? html`<button class="btn" id="ship">I've shipped my package</button>` : ""}
         ${info.their.shipped && !info.my.received ? html`<button class="btn" id="recv">Their package arrived</button>` : ""}</div>
-        ${!info.my.shipped ? html`<p class="hint">Perfume is flammable: ship by ground only, cushion glass well, and seal the atomizer.</p>` : ""}`;
+        ${!info.my.shipped ? html`<p class="hint">Perfume is flammable: ship by ground only, cushion glass well, and seal the atomizer. <a href="#/decanting">Packing tips${hasSupplyLinks() ? " and supplies" : ""}</a></p>` : ""}`;
     }
     setView(html`<a href="#/swaps" class="btn ghost small">&larr; All swaps</a>
       <div class="page-head" style="margin-top:8px"><div class="eyebrow">${gift ? "Gift offered" : "Swap started"} ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span>${gift ? html`<span class="pill rose gift-pill">${GIFT_ICON}Gift</span>` : ""}${meet ? html`<span class="pill ok near">${PIN}Meeting in person</span>` : html`<span class="pill grey">By mail</span>`}</div></div>
@@ -1779,7 +1829,7 @@
       <div class="card"><h3>Blocked members</h3>
         ${blocks.length ? html`<ul class="list">${blocks.map((b) => html`<li class="row between"><span>${avatar(b.blocked)} <a href="#/u/${b.blocked_id}">${b.blocked?.display_name || "Former member"}</a></span><button class="btn small ghost" data-unblock="${b.blocked_id}">Unblock</button></li>`)}</ul>`
           : html`<p class="muted small">Nobody. To block someone, open their profile and tap Block — you'll stop seeing each other and can't swap.</p>`}</div>
-      <div class="card"><h3>Help &amp; legal</h3><div class="row"><a class="btn small secondary" href="#/support">Support</a><a class="btn small ghost" href="#/terms">Terms of Use</a><a class="btn small ghost" href="#/privacy">Privacy Policy</a></div></div>
+      <div class="card"><h3>Help &amp; legal</h3><div class="row"><a class="btn small secondary" href="#/support">Support</a><a class="btn small ghost" href="#/decanting">Decanting guide</a><a class="btn small ghost" href="#/terms">Terms of Use</a><a class="btn small ghost" href="#/privacy">Privacy Policy</a></div></div>
       <div class="card"><h3>Sign out</h3><p class="muted small">Sign out of Swapfume on this device. Your account, collection and swaps stay as they are.</p><button class="btn secondary" data-signout>Sign out</button></div>
       <div class="card danger-zone"><h3>Delete account</h3><p class="muted small">Permanently remove your account and your data from Swapfume.</p><button class="btn small danger" id="delAcct">Delete my account…</button></div>
       ${api.mode === "demo" ? html`<div class="card"><h3>Demo tools</h3><p class="muted small">Only in demo mode. Step into another pretend member to answer your proposal, ship, and review.</p>
@@ -2508,6 +2558,7 @@
     [/^\/privacy$/, () => pageLegal("privacy")],
     [/^\/terms$/, () => pageLegal("terms")],
     [/^\/support$/, () => pageLegal("support")],
+    [/^\/decanting$/, pageDecanting],
     [/^\/add-country$/, pageAddCountry],
     [/^\/forgot$/, pageForgot],
     [/^\/confirm-email$/, () => pageResendConfirm(new URLSearchParams((location.hash.split("?")[1]) || ""))],

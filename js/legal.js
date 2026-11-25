@@ -29,6 +29,7 @@
   <li><b>"Take a photo":</b> if you use it, the photo is sent to our AI provider (Anthropic) only to read the perfume labels, and the list of perfumes comes back to you. Swapfume doesn't store the photo; we only count how many photos you used today.</li>
   <li><b>Community meetups:</b> meetups you organize (title, date, city, public meeting place, description), whether you said you're going, and comments you post on them.</li>
   <li><b>"Bring ${APP} to my country":</b> if you ask for your country, your email address and the country you named.</li>
+  <li><b>Links to Amazon:</b> the decanting guide may link to supplies on Amazon. If you click one, Amazon sees that you came from ${APP} so we can earn a small commission on qualifying purchases. We don't receive your name, address or what you bought, and nothing you do on ${APP} is shared with Amazon.</li>
   <li><b>What you list and write:</b> your collection, wishlist, profile photo and other photos you upload, swaps (including meet-up plans you write), swap reviews, perfume reviews and ratings, "Helpful" votes, catalog suggestions, reports and blocks.</li>
   <li><b>Basic technical data</b> our hosting providers record to keep the service running and secure (for example IP address and browser type in server logs).</li>
 </ul>
