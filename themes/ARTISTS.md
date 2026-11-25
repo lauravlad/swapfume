@@ -12,7 +12,7 @@ Laura can reorder, add or delete rows at any time.
 | # | Artist | Style idea for Swapfume | Mood | Done |
 |---|---|---|---|---|
 | 1 | Gustav Klimt | Gold leaf on emerald, mosaics, Tree of Life spirals | dark | ✅ 2026-11-24 |
-| 2 | Pierre-Joseph Redouté | Botanical rose engravings, soft watercolour petals on cream paper | light | ✅ 2026-11-24 |
+| 2 | Pierre-Joseph Redouté | Botanical rose engravings, soft watercolour petals on cream paper | light | ✅ skipped 2026-11-24 (Laura) |
 | 3 | Vincent van Gogh | Swirling starry-night brushstrokes, cobalt and sunflower yellow | dark | |
 | 4 | Katsushika Hokusai | Woodblock waves, Prussian blue, foam curls, washi paper | light | |
 | 5 | Alphonse Mucha | Art Nouveau arches, flowing hair, halos, muted pastels | light | |
