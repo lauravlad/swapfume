@@ -9,7 +9,7 @@
   // Same list as Util.COUNTRIES (js/util.js) and the database (migration 016).
   const COUNTRIES = "the United States, Canada and Romania";
   const mail = `<a href="mailto:${MAIL}">${MAIL}</a>`;
-  const UPDATED = "November 10, 2026";
+  const UPDATED = "November 24, 2026";
 
   window.LEGAL = {
     privacy: {
@@ -97,7 +97,7 @@
 <ul>
   <li>You must be <b>${AGE} or older</b>.</li>
   <li>You must live in one of the countries where ${APP} is open — currently <b>${COUNTRIES}</b> — and choose it as your swap country.</li>
-  <li>You swap, give and ship <b>only within your own country</b>. Perfume can't be mailed across borders.</li>
+  <li>You can make friends with members anywhere. Matches, browsing and meetups show members in your own country.</li>
   <li>One account per person. Keep your password to yourself; you're responsible for what happens in your account.</li>
 </ul>
 
@@ -110,7 +110,7 @@
 <ul>
   <li>Perfume is flammable. Ship it the way your postal service or courier allows for perfume (in the US, by ground only), following their rules and the law where you live.</li>
   <li>Pack glass carefully and seal atomizers.</li>
-  <li>Ship within your own country only — no international shipping.</li>
+  <li>If you swap with or give to a member in another country, <b>you are responsible for following the shipping and customs rules</b> of your carrier and of both countries. Many carriers and postal services don't accept perfume in international mail, and import duties may apply. If you can't ship it legally, don't send it.</li>
   <li>Only swap what you own, is genuine, and is described honestly (size, how much is left, batch, condition). No fakes or "inspired by" copies passed off as the original.</li>
 </ul>
 

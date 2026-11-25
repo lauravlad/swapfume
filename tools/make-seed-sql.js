@@ -178,6 +178,7 @@ parts.push(['ai_photos', head('021 daily limit for AI photo recognition', 'Same 
 parts.push(['swap_emails', head('022 email when someone sends you a swap or gift', 'Same as supabase/migrations/022_swap_emails.sql.') + mig('022_swap_emails.sql')]);
 parts.push(['community', head('023 community: friends, posts, likes and comments', 'Same as supabase/migrations/023_community.sql.') + mig('023_community.sql')]);
 parts.push(['perfume_photos', head('024 every member photo of a perfume is kept under that perfume', 'Same as supabase/migrations/024_perfume_photos.sql.') + mig('024_perfume_photos.sql')]);
+parts.push(['friends_abroad', head('025 friends and swaps across countries', 'Same as supabase/migrations/025_friends_abroad.sql.') + mig('025_friends_abroad.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);

@@ -294,8 +294,7 @@
   let resetFor = null; // demo stand-in for the emailed reset link
   const isAdmin = () => !!(uid && prof(uid) && prof(uid).is_admin);
   const adminOnly = () => isAdmin() || fail("Admins only.");
-  // Migration 016/017 rules: swaps only inside one country; quantities 0–99; meetups.
-  const sameCountry = (other) => { if (ccOf(uid) !== ccOf(other)) fail("Swaps are only between members in the same country — perfume can't be mailed across borders."); };
+  // Migration 017 rules: quantities 0–99; meetups. Since 025, swaps and gifts may cross borders.
   const qtyOk = (n) => { n = Math.round(Number(n)); if (!(n >= 0 && n <= 99)) fail("Choose an amount between 0 and 99."); return n; };
   const checkQty = (ids, qty) => ids.forEach((id) => {
     const q = Number(qty[id] || 1), i = db.items.find((x) => x.id === Number(id));
@@ -317,7 +316,8 @@
     refreshMemberPhoto(perfume_id);
   }
   const friendRow = (other) => db.friendships.find((f) => (f.user_a === uid && f.user_b === other) || (f.user_b === uid && f.user_a === other));
-  const canSeePost = (p) => !!uid && (p.author_id === uid || isAdmin() || (!prof(uid)?.is_banned && !p.is_hidden && !blockedWith(p.author_id) && p.country_code === ccOf(uid)));
+  const isFriend = (other) => friendRow(other)?.status === "accepted";
+  const canSeePost = (p) => !!uid && (p.author_id === uid || isAdmin() || (!prof(uid)?.is_banned && !p.is_hidden && !blockedWith(p.author_id) && (p.country_code === ccOf(uid) || isFriend(p.author_id))));
   const withPost = (p) => {
     const likes = db.postLikes.filter((x) => x.post_id === p.id);
     const pf = perf(p.perfume_id);
@@ -584,7 +584,6 @@
 
     async proposeSwap({ recipientId, myItemIds, theirItemIds, message, method = "mail", qty = {} }) {
       active(); await tick();
-      sameCountry(recipientId);
       if (!["mail", "meetup"].includes(method)) fail("Choose mail or meeting in person.");
       if (recipientId === uid) fail("You cannot swap with yourself.");
       if (!prof(recipientId) || prof(recipientId).is_banned || blockedWith(recipientId)) fail("This member is not available for swaps.");
@@ -610,7 +609,6 @@
     // Gifts: same rules as offer_gift() in migration 013.
     async offerGift({ recipientId, myItemIds, message, method = "mail", qty = {} }) {
       active(); await tick();
-      sameCountry(recipientId);
       if (!["mail", "meetup"].includes(method)) fail("Choose mail or meeting in person.");
       if (recipientId === uid) fail("You cannot give a gift to yourself.");
       if (!prof(recipientId) || prof(recipientId).is_banned || blockedWith(recipientId)) fail("This member is not available.");
@@ -659,7 +657,6 @@
       if (!i || !i.tradeable || i.is_hidden) fail("This listing is not available.");
       if (i.owner_id === uid) fail("This is your own listing.");
       if (blockedWith(i.owner_id)) fail("This member is not available.");
-      if (ccOf(i.owner_id) !== ccOf(uid)) fail("This listing is in another country.");
       let t = db.threads.find((x) => x.kind === "item" && x.item_id === i.id && x.user_a === uid);
       if (!t) { t = { id: ++db.seq, kind: "item", swap_id: null, item_id: i.id, perfume_id: i.perfume_id, user_a: uid, user_b: i.owner_id, created_at: now(), last_message_at: null }; db.threads.push(t); save(); }
       return t.id;
@@ -1194,7 +1191,6 @@
       if (userId === uid) fail("You cannot add yourself.");
       const o = prof(userId); if (!o || o.is_banned) fail("Member not found.");
       if (blockedWith(userId)) fail("You cannot add this member.");
-      if (ccOf(userId) !== ccOf(uid)) fail("Friends are only between members in the same country.");
       const f = friendRow(userId);
       if (f) {
         if (f.status === "accepted") return "friends";

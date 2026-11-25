@@ -360,7 +360,7 @@
   // ---------- Distance & meet-ups ----------
   const NEAR_MILES = 20; // same limit as the database (migration 011)
   const PIN = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg>`);
-  // My swap country (US, CA or RO). Matches, browsing, meetups and swaps stay inside it.
+  // My country (US, CA or RO). Matches, browsing, Discover and meetups stay inside it; friends and swaps may cross borders.
   const myCC = () => state.profile?.country_code || "US";
   const myCountry = () => Util.country(myCC());
   // The database works in miles; Canada and Romania read kilometres.
@@ -390,6 +390,14 @@
     return html`<figure class="area-map" aria-label="Map of the general area around ${label || "this member"}">
       <div class="area-tiles">${tiles}<span class="area-glow" aria-hidden="true"></span></div>
       <figcaption><span>${PIN}${label ? `Around ${label}` : "General area"}</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a></figcaption></figure>`;
+  }
+  // Swaps across borders are allowed (migration 025), with a reminder about shipping rules.
+  const isAbroad = (other) => !!other && (other.country_code || "US") !== myCC();
+  function abroadNote(other, { tick = false } = {}) {
+    const them = Util.country(other.country_code || "US"), mine = myCountry();
+    return html`<div class="notice abroad-note" style="margin-top:12px"><b>${GLOBE} ${other.display_name} lives in ${them.the}, you're in ${mine.the}.</b>
+      <p class="small" style="margin:6px 0 0">Shipping perfume between countries has rules. Perfume contains alcohol, so many carriers treat it as dangerous goods, and some postal services won't take it in international mail at all. Customs may charge import duties or hold the package. Before you send anything, check your carrier's rules and both countries' import rules. You're each responsible for shipping legally.</p>
+      ${tick ? html`<label class="check-row" style="margin-top:10px;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="abroadOk" required> <span class="small">I'll check the shipping and customs rules before I send anything.</span></label>` : ""}</div>`;
   }
   const SAFETY_TIPS = html`<ul class="tips">
     <li>Meet in a <b>busy public place</b> in daylight — a café, a library lobby, a mall.</li>
@@ -596,7 +604,7 @@
       <div class="w-join" id="join">
         <div>
           <h2>Join the circle</h2>
-          <p class="muted">Open in ${Util.openCountriesText()}. Members swap within their own country — perfume can't easily cross borders by mail.</p>
+          <p class="muted">Open in ${Util.openCountriesText()}. Matches and meetups are in your own country, and you can make friends anywhere.</p>
           <button type="button" class="btn secondary small" id="askCountry">${GLOBE} Add my country</button>
           <div id="askHost" hidden>${countryRequestForm()}</div>
         </div>
@@ -607,7 +615,7 @@
           <div class="field"><label for="em">Email</label><input id="em" type="email" required autocomplete="email"></div>
           <div class="field"><label for="pw">Password</label><input id="pw" type="password" required minlength="8" autocomplete="current-password"><p class="hint" id="pwHint" hidden>At least 8 characters.</p></div>
           <div class="field" id="ccField" hidden><label for="cc">Country you live in</label><select id="cc">${Util.COUNTRIES.map((c) => html`<option value="${c.code}" ${c.code === guessCC ? raw("selected") : ""}>${c.name}</option>`)}</select>
-            <p class="hint">You'll swap with members in the same country.</p></div>
+            <p class="hint">You'll see matches and meetups in your country.</p></div>
           <div class="field" id="dobField" hidden><label for="dob">Date of birth</label><input id="dob" type="date" min="1900-01-01" max="${new Date().toISOString().slice(0, 10)}" autocomplete="bday"><p class="hint">Swapfume is for people ${CFG.MIN_AGE} and older. We keep only a yes/no — never your birthday.</p></div>
           <div class="field"><button class="btn block" id="authBtn">Sign in</button></div>
           <p class="small" id="forgotRow" style="margin:0"><a href="#/forgot">Forgot password?</a> · <a href="#/confirm-email">Resend confirmation email</a></p>
@@ -1466,10 +1474,10 @@
     const iBlocked = blocks.some((b) => b.blocked_id === id);
     const shown = isMe ? items : items.filter((i) => i.tradeable);
     const miles = dist[id];
-    // Swaps stay inside one country (database rule, migration 016).
-    const otherCountry = !isMe && (p.country_code || "US") !== myCC();
-    const canSwap = !p.is_banned && !iBlocked && !otherCountry;
-    const canFriend = !isMe && !p.is_banned && !iBlocked && !otherCountry;
+    // Friends and swaps can cross borders (migration 025); swapping abroad shows a shipping-rules reminder.
+    const otherCountry = !isMe && isAbroad(p);
+    const canSwap = !p.is_banned && !iBlocked;
+    const canFriend = !isMe && !p.is_banned && !iBlocked;
     const friendBtn = !canFriend ? "" : fstat === "friends" ? html`<button class="btn secondary" id="unfriend">✓ Friends</button>`
       : fstat === "sent" ? html`<button class="btn secondary" id="unfriend">Request sent · Cancel</button>`
       : fstat === "received" ? html`<button class="btn" id="addFriend">${ADD_FRIEND}<span>Accept friend request</span></button>`
@@ -1478,7 +1486,7 @@
         ${iBlocked ? "" : areaMap(area, p.city)}</div>
         ${!iBlocked && miles != null && miles <= NEAR_MILES ? html`<div class="notice ok" style="margin-top:12px">${PIN} You're about ${distText(miles)} apart. When you propose a swap you can choose <b>Meet in person</b> instead of shipping.</div>` : ""}
         ${p.is_banned ? html`<div class="notice rose" style="margin-top:12px">This account has been suspended.</div>` : ""}
-        ${otherCountry ? html`<div class="notice" style="margin-top:12px">${p.display_name} swaps in ${Util.country(p.country_code).the}. Swaps happen within one country, because perfume can't be mailed across borders.</div>` : ""}
+        ${otherCountry ? html`<div class="notice" style="margin-top:12px">${GLOBE} ${p.display_name} lives in ${Util.country(p.country_code).the}. You can be friends wherever you live. If you'd like to swap, remember that shipping perfume between countries has rules: you'll see a reminder when you propose.</div>` : ""}
         ${p.bio ? html`<p style="margin-top:14px">${p.bio}</p>` : ""}
         ${!iBlocked && availableText(items) ? html`<p class="small" style="margin-top:10px"><b>Available to swap:</b> ${availableText(items)}</p>` : ""}
         ${iBlocked ? html`<div class="notice" style="margin-top:12px">You blocked ${p.display_name}. You don't see each other's listings or wishlists, and neither of you can propose a swap. They aren't told.</div>` : ""}
@@ -1526,7 +1534,6 @@
     const miles = dist[otherId], canMeet = miles != null && miles <= NEAR_MILES;
     if (!other) return setView(html`<div class="empty"><h3>Member not found</h3></div>`);
     if ((await api.listBlocks()).some((b) => b.blocked_id === otherId)) return setView(html`<div class="empty"><h3>You blocked ${other.display_name}</h3><p>Unblock them from their profile to swap again.</p><a class="btn secondary" href="#/u/${otherId}">Their profile</a></div>`);
-    if ((other.country_code || "US") !== myCC()) return setView(html`<div class="empty"><h3>${other.display_name} is in ${Util.country(other.country_code).the}</h3><p>Swaps and gifts happen within one country, because perfume can't be mailed across borders.</p><a class="btn secondary" href="#/u/${otherId}">Back to their profile</a></div>`);
     if (gift) return giftPage(other, mine, theirW, canMeet, miles, myLoc);
     const myT = mine.filter((i) => i.tradeable && !i.is_hidden);
     const wantSet = new Set(myW.map((w) => w.perfume_id)), theyWantSet = new Set(theirW.map((w) => w.perfume_id));
@@ -1534,6 +1541,7 @@
     setView(html`<div class="page-head"><div class="eyebrow">New proposal</div><h1>Swap with ${other.display_name}</h1><p>Pick what you'd like from them, and what you'll give. Tick <b>as many items as you like on each side</b> — several samples for one rare decant is perfectly fine. They can accept or decline.</p></div>
       ${newbie ? html`<div class="notice" style="margin-top:10px"><b>Tip for first swaps:</b> start with samples or decants before trading full bottles. It builds trust on both sides.</div>` : ""}
       <form id="pf">
+        ${isAbroad(other) ? abroadNote(other, { tick: true }) : ""}
         <h2>How will you swap?</h2>
         <div class="method-pick" role="radiogroup" aria-label="How will you swap">
           <label class="method"><input type="radio" name="method" value="mail" checked><span><b>Ship by mail</b><span class="small muted">Addresses are shared once you both accept.</span></span></label>
@@ -1578,6 +1586,7 @@
     const theyWantSet = new Set(theirW.map((w) => w.perfume_id));
     setView(html`<div class="page-head"><div class="eyebrow">${GIFT_ICON} A gift</div><h1>Give a gift to ${other.display_name}</h1><p>Pick what you'd like to give. Nothing is asked in return. ${other.display_name} can accept or decline.</p></div>
       <form id="pf">
+        ${isAbroad(other) ? abroadNote(other, { tick: true }) : ""}
         <h2>How will you give it?</h2>
         <div class="method-pick" role="radiogroup" aria-label="How will you give it">
           <label class="method"><input type="radio" name="method" value="mail" checked><span><b>Ship by mail</b><span class="small muted">If they accept, you'll see their address. They won't see yours.</span></span></label>
@@ -1661,6 +1670,7 @@
     }
     setView(html`<a href="#/swaps" class="btn ghost small">&larr; All swaps</a>
       <div class="page-head" style="margin-top:8px"><div class="eyebrow">${gift ? "Gift offered" : "Swap started"} ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span>${gift ? html`<span class="pill rose gift-pill">${GIFT_ICON}Gift</span>` : ""}${meet ? html`<span class="pill ok near">${PIN}Meeting in person</span>` : html`<span class="pill grey">By mail</span>`}</div></div>
+      ${o && isAbroad(o) && !meet && !closed && s.status !== "completed" ? abroadNote(o) : ""}
       <div class="stack">
         ${s.message ? html`<div class="card"><div class="small muted">${info.iAmP ? "Your note" : `${on}'s note`}</div><p style="margin:4px 0 0">“${s.message}”</p></div>` : ""}
         ${gift ? html`<div class="card"><h3>${GIFT_ICON} ${info.iAmP ? `Your gift to ${on}` : `Your gift from ${on}`} <span class="pill">${s.items.length}</span></h3>${itemsList(s.items)}<p class="hint">${info.iAmP ? "Nothing is asked in return." : "Nothing to send back. Just enjoy it!"}</p>
@@ -1749,7 +1759,7 @@
           <p class="hint" style="margin-top:6px">Shown next to your name. A friendly face or your favourite bottle — no addresses or other people.</p></div></div>
         <div class="field"><label for="pn">Display name</label><input id="pn" type="text" required maxlength="40" value="${p.display_name}"></div>
         <div class="two field"><div><label for="pc">City</label><input id="pc" type="text" maxlength="80" value="${p.city}"></div><div><label for="pk">Country</label><select id="pk">${Util.COUNTRIES.map((c) => html`<option value="${c.code}" ${c.code === C.code ? raw("selected") : ""}>${c.name}</option>`)}</select></div></div>
-        <p class="hint" style="margin-top:-6px">You see matches, swaps and meetups in your country — perfume can't be mailed across borders. Moved? Change it here (not while a swap is open).</p>
+        <p class="hint" style="margin-top:-6px">You see matches and meetups in your country. Friends can live anywhere. Moved? Change it here (not while a swap is open).</p>
         <div class="field"><label for="pb">Short bio</label><textarea id="pb" maxlength="500" placeholder="What you love to wear, how you pack…">${p.bio}</textarea></div>
         <div class="field row"><button class="btn" id="saveProf">Save profile</button><a class="btn ghost" href="#/u/${p.id}">View my public page</a></div></form>
       <form class="card" id="addrForm"><h3>Shipping address <span class="pill">Private</span></h3>
@@ -1779,7 +1789,7 @@
     const avr = $("#avRemove"); if (avr) avr.addEventListener("click", () => run(avr, async () => { state.profile = await api.setMyAvatar(null); toast("Profile photo removed."); route(); }));
     $("#profForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveProf"), async () => {
       const cc = $("#pk").value, moved = cc !== C.code;
-      if (moved && !(await confirmBox(`Move to ${Util.country(cc).name}?`, `You'll see matches, swaps and meetups in ${Util.country(cc).the}. Your saved ${C.postal} will be removed — add your new one under “Your area”.`, "Change country"))) return;
+      if (moved && !(await confirmBox(`Move to ${Util.country(cc).name}?`, `You'll see matches and meetups in ${Util.country(cc).the}. Your saved ${C.postal} will be removed — add your new one under “Your area”.`, "Change country"))) return;
       if (moved) await api.setMyCountry(cc);
       state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: Util.country(cc).name, bio: $("#pb").value });
       toast("Profile saved."); if (moved) route(); }); });
