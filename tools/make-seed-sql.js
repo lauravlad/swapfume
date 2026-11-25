@@ -179,6 +179,7 @@ parts.push(['swap_emails', head('022 email when someone sends you a swap or gift
 parts.push(['community', head('023 community: friends, posts, likes and comments', 'Same as supabase/migrations/023_community.sql.') + mig('023_community.sql')]);
 parts.push(['perfume_photos', head('024 every member photo of a perfume is kept under that perfume', 'Same as supabase/migrations/024_perfume_photos.sql.') + mig('024_perfume_photos.sql')]);
 parts.push(['friends_abroad', head('025 friends and swaps across countries', 'Same as supabase/migrations/025_friends_abroad.sql.') + mig('025_friends_abroad.sql')]);
+parts.push(['fix_accents', head('026 fix accents scrambled by the clipboard (e.g. Frederic Malle)', 'Same as supabase/migrations/026_fix_accents.sql.') + mig('026_fix_accents.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);
