@@ -33,6 +33,15 @@ the Skill tool and use their guidance throughout (they are installed on this Mac
 | `design:accessibility-review` | A WCAG 2.1 AA pass on the finished theme (contrast, focus ring, touch targets, reduced motion), on top of `tools/check-theme.js`. |
 | `21st-ui-review` | A final design-QA review of the pages for visual defects, consistency and responsive behaviour. |
 
+**Extra skills, used whenever they are installed.** Look in your list of available skills for these
+plugins (the skill names may carry a plugin prefix) and load the ones you find:
+
+| Plugin → skills | Use it for |
+|---|---|
+| **audit-suite** → `web-animation-design`, `make-interfaces-feel-better`, `audit-as-design-eng`, `audit-as-a11y-eng` | Better, gentler motion (easing, timing, reduced motion) and finishing touches; a design and an accessibility audit of the finished theme. |
+| **UI Color Palette** → `ui-color-palette-build-color-system`, `ui-color-palette-audit-palette` | Build the full colour system from the artist's key colours, then audit its contrast. Send it colour values only, never any member data. |
+| **Snagly** → `visual-snapshot`, `visual-regression`, `accessibility-audit` | Screenshot the pages before and after the change and compare them, so a broken layout is caught before it goes live; a second accessibility audit. Test only the local copy (`http://localhost:5198/?demo=1`), never sign in to the live site. |
+
 If a skill isn't available in this run, carry on without it and say so in `HISTORY.md`. The skills
 guide the design; the rules in this file (allowed files, original art, the check, never pushing a
 failing theme) always come first.
