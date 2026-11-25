@@ -966,18 +966,7 @@ a.art { text-decoration: none; color: inherit; }
 /* Background picture (2026-11-24): Laura's own shelf of bottles on teal silk, pre-blurred
    (icons/bg-shelf.jpg, ~100 KB) so labels become soft colour. Very faint, fixed behind every
    page; cards and panels stay solid so text never sits directly on the busy part. */
-/* Replaced the same day: a see-through dandelion whose seeds fly up and away (icons/bg-dandelion.svg,
-   drawn line art). The SVG is used as a mask, so its colour comes from --dandelion and follows dark mode. */
-body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: var(--dandelion, #0E6767);
-  -webkit-mask: url("../icons/bg-dandelion.svg?v=2") center / cover no-repeat;
-          mask: url("../icons/bg-dandelion.svg?v=2") center / cover no-repeat;
-  opacity: .32; }
-@media (prefers-color-scheme: dark) { body::before { --dandelion: #BFE8E4; opacity: .26; } }
-@media (prefers-reduced-motion: no-preference) {
-  body::before { animation: dandelion-drift 18s ease-in-out infinite alternate; }
-}
-@keyframes dandelion-drift { from { transform: translate(0, 0) rotate(0deg); } to { transform: translate(-10px, -14px) rotate(-.6deg); } }
+/* The dandelion was then replaced by the Klimt Tree of Life: see the KLIMT layer at the end. */
 
 /* Member photos kept under each perfume (2026-11-24) */
 .photo-gallery .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
@@ -1064,3 +1053,140 @@ h1 .friend-tag { font-size: .8rem; }
   #view.entering .post-list > *:nth-child(3) { animation-delay: .12s; }
   #view.entering .post-list > *:nth-child(n+4) { animation-delay: .18s; }
 }
+
+
+/* =====================================================================
+   KLIMT (2026-11-24): the whole site in the style of Gustav Klimt's golden
+   period. Always dark (like The Kiss): warm black, gold leaf, mosaic strips
+   of gold, black, cream and turquoise, and the Tree of Life spirals behind
+   every page. Body text stays Inter in cream for easy reading; headings use
+   Cinzel (Vienna Secession lettering) in gold leaf. All text pairs 4.5:1+.
+   ===================================================================== */
+:root, :root:not([data-theme]) {
+  --bg: #120E08;
+  --surface: #1E170D;
+  --surface-2: #2A2012;
+  --ink: #F6EBD0;
+  --muted: #CDBB91;
+  --line: #4A3A1C;
+  --line-strong: #6E5626;
+  --field: #17120A;
+  --field-line: #7A5F2A;
+  --accent: #EBC765;
+  --accent-fill: #D4A437;
+  --accent-fill-hover: #E6B848;
+  --accent-ink: #1A1208;
+  --accent-soft: #3A2C10;
+  --accent-2: #D4A437;
+  --teal: #8FD3C2;
+  --teal-deco: #3E8F7E;
+  --teal-soft: #16302A;
+  --saffron: #E7B53C;
+  --gold: #EBC765;
+  --gold-soft: #33270E;
+  --gold-ink: #F5D9A0;
+  --champagne: #2A2012;
+  --ok: #A3D9A5; --ok-soft: #17301C;
+  --warn: #F2C46B; --warn-soft: #33290F;
+  --danger: #FF9A86;
+  --ring: #F7E08A;
+  --leaf: linear-gradient(135deg, #F7E08A 0%, #D4A437 38%, #B8862B 62%, #F2D27A 100%);
+  --mosaic: repeating-linear-gradient(90deg, #D4A437 0 10px, #120E08 10px 12px, #F4E6BE 12px 16px, #120E08 16px 18px, #3E8F7E 18px 24px, #120E08 24px 26px, #EBC765 26px 34px, #120E08 34px 36px, #C2185B 36px 39px, #120E08 39px 41px);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 30px -14px rgba(0, 0, 0, .8);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, .4), 0 22px 40px -18px rgba(212, 164, 55, .35);
+  --serif: "Cinzel", "Playfair Display", Georgia, serif;
+  color-scheme: dark;
+}
+
+/* Gold-leaf mosaic dust over warm black, with two soft gold glows */
+body {
+  background:
+    radial-gradient(900px 520px at 100% -10%, rgba(212, 164, 55, .16), transparent 60%),
+    radial-gradient(800px 480px at -10% 0%, rgba(62, 143, 126, .12), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56'%3E%3Cg fill='%23D4A437' fill-opacity='.07'%3E%3Crect x='3' y='4' width='7' height='9'/%3E%3Crect x='30' y='26' width='9' height='6'/%3E%3Ccircle cx='44' cy='9' r='3'/%3E%3Ccircle cx='17' cy='42' r='2.5'/%3E%3Crect x='46' y='44' width='5' height='7'/%3E%3C/g%3E%3C/svg%3E"),
+    var(--bg);
+  background-attachment: fixed;
+}
+/* Tree of Life (icons/bg-tree-of-life.svg, used as a mask so it shows in gold leaf) */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--leaf);
+  -webkit-mask: url("../icons/bg-tree-of-life.svg?v=1") center 30% / cover no-repeat;
+          mask: url("../icons/bg-tree-of-life.svg?v=1") center 30% / cover no-repeat;
+  opacity: .34; }
+@media (prefers-reduced-motion: no-preference) {
+  body::before { animation: tree-breathe 14s ease-in-out infinite alternate; }
+}
+@keyframes tree-breathe { from { opacity: .28; transform: scale(1); } to { opacity: .4; transform: scale(1.015); } }
+
+/* Headings in gold leaf */
+h1, h2, .wordmark { font-family: var(--serif); letter-spacing: .02em; }
+h1, .w-hero h1 em {
+  background: var(--leaf); -webkit-background-clip: text; background-clip: text; color: #EBC765; -webkit-text-fill-color: transparent;
+}
+h2 { color: var(--gold); }
+h3 { color: var(--ink); }
+h2::after { background: var(--mosaic); height: 4px; width: 64px; border-radius: 1px; }
+.w-hero h1 em::after { background: var(--mosaic); opacity: .9; height: .1em; }
+.wordmark, .wordmark-tag { color: var(--gold); }
+.wordmark-tag { border-left-color: var(--line-strong); }
+.eyebrow { color: var(--teal); }
+
+/* Top bar and tab bar: black with a mosaic strip */
+.topbar { background: rgba(18, 14, 8, .9); border-bottom: 0; box-shadow: none; }
+.topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--mosaic); opacity: .85; }
+.tabbar { background: rgba(18, 14, 8, .96); border-top: 0; }
+.tabbar::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--mosaic); opacity: .85; }
+.topnav a.active { background: var(--accent-soft); color: var(--gold); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.tabbar a.active { color: var(--gold); }
+.dot { background: #C2185B; border-color: var(--bg); }
+
+/* Cards and tiles: dark bronze with a thin gold-leaf frame */
+.card, .tile, .dlg, dialog, .note, .method, .post, .composer {
+  background: linear-gradient(180deg, #221A0E, #1A140B); border-color: #5A4620;
+  box-shadow: inset 0 0 0 1px rgba(247, 224, 138, .06), var(--shadow);
+}
+.tile .art { background:
+  radial-gradient(70% 55% at 50% 88%, color-mix(in srgb, var(--tint, #D4A437) 40%, transparent), transparent 70%),
+  linear-gradient(180deg, #2A2012 0%, color-mix(in srgb, var(--tint, #D4A437) 14%, #2A2012) 100%); }
+.tile .art svg, .hero-pic svg { filter: drop-shadow(0 10px 12px rgba(0, 0, 0, .55)); }
+.hero-pic img, .hero-pic svg { background: radial-gradient(110% 80% at 50% 100%, color-mix(in srgb, var(--tint, #D4A437) 35%, #2A2012), #1E170D 75%); }
+.fam { background: color-mix(in srgb, var(--tint, var(--surface-2)) 14%, var(--surface)); }
+.area-tiles img { filter: sepia(.4) saturate(.7) brightness(.7); }
+
+/* Buttons: gold leaf with dark text; secondary: outlined in gold */
+.btn { background: var(--leaf); color: var(--accent-ink); border-color: #B8862B; box-shadow: 0 8px 18px -10px rgba(212, 164, 55, .7), inset 0 1px 0 rgba(255, 248, 220, .5); }
+.btn:hover { background: var(--leaf); filter: brightness(1.08); }
+.btn.secondary { background: rgba(30, 23, 13, .85); color: var(--gold); border-color: #8C6418; }
+.btn.secondary:hover { background: var(--surface-2); }
+.btn.ghost { background: transparent; color: var(--gold); }
+.btn.danger { background: #5A1A16; color: #FFD9D2; border-color: #8A2A22; }
+
+/* Fields */
+input[type=text], input[type=email], input[type=password], input[type=number], input[type=search], input[type=date], select, textarea {
+  background: var(--field); color: var(--ink); border-color: var(--field-line); }
+input::placeholder, textarea::placeholder { color: #9D8B63; }
+
+/* Pills and small parts */
+.pill { background: var(--surface-2); color: var(--ink); }
+.pill.grey { background: #2A2012; color: var(--muted); }
+.pill.teal { background: var(--teal-soft); color: var(--teal); }
+.pill.qty, .toast, .skip { background: var(--leaf); color: var(--accent-ink); }
+.msg.me .bubble { background: var(--accent-fill); color: var(--accent-ink); }
+.steps li.done .mark { color: var(--accent-ink); }
+.tile.selectable.on .check::after { border-color: var(--accent-ink); }
+.swap-summary { background: rgba(18, 14, 8, .95); color: var(--ink); box-shadow: inset 0 0 0 1px #5A4620, var(--shadow-lift); }
+code { background: var(--surface-2); color: var(--ink); }
+.tagsum .bar { background: var(--surface-2); }
+.demo-banner { background: var(--gold-soft); color: var(--gold-ink); border-bottom-color: var(--line); }
+.avatar { box-shadow: 0 0 0 2px #B8862B, 0 4px 12px -4px rgba(0, 0, 0, .6); }
+.site-footer { color: var(--muted); }
+.site-footer a { color: var(--gold); }
+::selection { background: #5A4620; color: #FFF6DA; }
+
+/* Welcome page: gold-framed portraits */
+.w-who { box-shadow: 0 0 0 3px #120E08, 0 0 0 5px #D4A437, 0 10px 26px -8px rgba(0, 0, 0, .8); }
+.w-who.l, .w-who.r { background: #D4A437; }
+.w-pill { background: var(--accent-soft); color: var(--gold); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.w-steps li { background: linear-gradient(180deg, #221A0E, #1A140B); border-color: #5A4620; }
+.wordmark { white-space: nowrap; }
+@media (max-width: 420px) { .wordmark { font-size: 1.3rem; } .wordmark-tag { display: none; } }
