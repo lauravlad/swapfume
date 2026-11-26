@@ -38,7 +38,7 @@ window.APP_CONFIG = {
   // Amazon Associates tracking IDs for the decanting-supplies links on #/decanting (one per Amazon store,
   // e.g. "swapfume-20" for amazon.com). Empty = that country's supply list shows without links.
   // Romania has no Amazon store of its own, so it never shows links.
-  AMAZON_TAGS: { US: "", CA: "" },
+  AMAZON_TAGS: { US: "swapfume-20", CA: "" },
   // Live: connected to the Swapfume Supabase project. (Empty both values to go back to demo mode.)
   SUPABASE_URL: "https://lrnymsmajoriksbnoojn.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxybnltc21ham9yaWtzYm5vb2puIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MTU3NzQsImV4cCI6MjEwOTQ5MTc3NH0.icMukRItbaORuRgWELldcAAS2RvIDn_jgcL4VP1uIwI"
