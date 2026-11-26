@@ -30,7 +30,7 @@ window.APP_CONFIG = {
   SWAP_EMAIL_FUNCTION: "swift-processor",
   // The activity-email Edge Function (messages, comments, friend requests, swap updates...). Its name
   // in Supabase → Edge Functions once deployed; leave "" until then (in-app notifications still work).
-  ACTIVITY_EMAIL_FUNCTION: "",
+  ACTIVITY_EMAIL_FUNCTION: "super-api",
   // "Continue with ..." buttons on the sign-in card. Add "google" and/or "apple" here only after
   // switching that provider on in Supabase → Authentication → Providers (see README → Sign in with Google/Apple).
   OAUTH_PROVIDERS: [],
