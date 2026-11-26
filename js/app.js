@@ -405,6 +405,20 @@
       <p class="small" style="margin:6px 0 0">Shipping perfume between countries has rules. Perfume contains alcohol, so many carriers treat it as dangerous goods, and some postal services won't take it in international mail at all. Customs may charge import duties or hold the package. Before you send anything, check your carrier's rules and both countries' import rules. You're each responsible for shipping legally.</p>
       ${tick ? html`<label class="check-row" style="margin-top:10px;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="abroadOk" required> <span class="small">I'll check the shipping and customs rules before I send anything.</span></label>` : ""}</div>`;
   }
+  // Where members can buy postage or a prepaid label themselves, straight from the carrier. Swapfume never sells labels or handles money.
+  const POSTAGE = {
+    US: { sites: [["USPS Click-N-Ship", "https://www.usps.com/ship/online-shipping.htm"], ["Pirate Ship", "https://www.pirateship.com/"]],
+      how: html`Choose <b>USPS Ground Advantage</b> (perfume can't go by air) and answer <b>yes</b> when the site asks about hazardous materials.` },
+    CA: { sites: [["Canada Post", "https://www.canadapost-postescanada.ca/cpc/en/personal/create-shipping-label.page"]],
+      how: html`Choose <b>Regular Parcel</b> or <b>Expedited Parcel</b>, the ground services (perfume can't go by air).` },
+    RO: { sites: [["FAN Courier", "https://www.fancourier.ro/"], ["Sameday", "https://sameday.ro/"], ["Cargus", "https://www.cargus.ro/"]],
+      how: html`Book a delivery within Romania and say it's perfume, since some couriers and lockers don't take it. Never choose <b>ramburs</b> (cash on delivery).` }
+  };
+  const postageLinks = (cc) => (POSTAGE[cc] || POSTAGE.US).sites.map(([n, u], k) => html`${k ? " · " : ""}<a href="${u}" target="_blank" rel="noopener">${n} ↗</a>`);
+  function labelHelp(cc, other) {
+    return html`<div class="label-help small" style="margin-top:8px"><div><b>Where to buy one:</b> ${postageLinks(cc)}</div>
+      <div style="margin-top:4px">${(POSTAGE[cc] || POSTAGE.US).how} You'll need ${other}'s ${Util.country(cc).postal} and the box size and weight, so ask in Messages below. Address the label <b>to you</b>.</div></div>`;
+  }
   const SAFETY_TIPS = html`<ul class="tips">
     <li>Meet in a <b>busy public place</b> in daylight — a café, a library lobby, a mall.</li>
     <li><b>Tell a friend</b> where you're going and when; bring one along if you like.</li>
@@ -2090,7 +2104,7 @@
     else if (s.status === "accepted") {
       action = html`<div class="row">${!info.my.shipped ? html`<button class="btn" id="ship">I've shipped my package</button>` : ""}
         ${info.their.shipped && !info.my.received ? html`<button class="btn" id="recv">Their package arrived</button>` : ""}</div>
-        ${!info.my.shipped ? html`<p class="hint">Perfume is flammable: ship by ground only, cushion glass well, and seal the atomizer. <a href="#/decanting">Packing tips${hasSupplyLinks() ? " and supplies" : ""}</a></p>` : ""}`;
+        ${!info.my.shipped ? html`<p class="hint">Perfume is flammable: ship by ground only, cushion glass well, and seal the atomizer. <a href="#/decanting">Packing tips${hasSupplyLinks() ? " and supplies" : ""}</a>${o && !isAbroad(o) ? html`<br>Buy postage online: ${postageLinks(myCC())}` : ""}</p>` : ""}`;
     }
     setView(html`<a href="#/swaps" class="btn ghost small">&larr; All swaps</a>
       <div class="page-head" style="margin-top:8px"><div class="eyebrow">${gift ? "Gift offered" : "Swap started"} ${fmtDate(s.created_at)}</div><h1>With ${o ? html`<a href="#/u/${o.id}" style="color:inherit">${on}</a>` : on}</h1><div class="row">${trust(stats[o?.id])} <span class="pill ${info.tone}">${info.label}</span>${gift ? html`<span class="pill rose gift-pill">${GIFT_ICON}Gift</span>` : ""}${meet ? html`<span class="pill ok near">${PIN}Meeting in person</span>` : html`<span class="pill grey">By mail</span>`}</div></div>
@@ -2099,10 +2113,12 @@
         ${s.message ? html`<div class="card"><div class="small muted">${info.iAmP ? "Your note" : `${on}'s note`}</div><p style="margin:4px 0 0">“${s.message}”</p></div>` : ""}
         ${gift ? html`<div class="card"><h3>${GIFT_ICON} ${info.iAmP ? `Your gift to ${on}` : `Your gift from ${on}`} <span class="pill">${s.items.length}</span></h3>${itemsList(s.items)}<p class="hint">${info.iAmP ? "Nothing is asked in return." : "Nothing to send back. Just enjoy it!"}</p>
           ${!meet && !closed && s.status !== "completed" ? html`<div class="notice label-tip" style="margin-top:10px">${info.iAmP
-            ? (s.label_path ? html`<b>${on} sent a prepaid shipping label.</b> Print it, stick it on the package and drop it off. <div style="margin-top:8px"><button class="btn small" id="labelOpen">Download shipping label</button></div>`
+            ? (s.label_path ? html`<b>${on} sent a prepaid shipping label.</b> Print it, stick it on the package and drop it off where the label says (it's for ground shipping). If the carrier asks for a perfume or "Limited Quantity" mark on the box, add it. <div style="margin-top:8px"><button class="btn small" id="labelOpen">Download shipping label</button></div>`
               : html`<b>About shipping:</b> ${on} may cover it with a <b>prepaid shipping label</b>. If they add one, it appears here for you to print. Never accept money or payment apps on Swapfume.`)
             : s.label_path ? html`<b>Prepaid label added ✓</b> ${on} will print it and use it to ship your gift. <div class="row" style="margin-top:8px"><button class="btn small secondary" id="labelOpen">View label</button>${s.status === "accepted" && !info.their.shipped ? html`<button class="btn small ghost" id="labelRemove">Remove</button>` : ""}</div>`
-            : s.status === "accepted" && !info.their.shipped ? html`<b>Want to cover shipping?</b> Buy a <b>prepaid shipping label</b> from the post office or a label site — addressed to you, from ${on}'s area — and add it here. ${on} just prints it and drops off the package. Never send money: Swapfume is always money-free.
+            : s.status === "accepted" && !info.their.shipped && o && isAbroad(o) ? html`<b>About shipping:</b> ${on} is in another country. Most carriers won't take perfume across borders, so a prepaid label usually isn't possible here. Never send money: Swapfume is always money-free.`
+            : s.status === "accepted" && !info.their.shipped ? html`<b>Want to cover shipping?</b> Buy a <b>prepaid shipping label</b> from the post office or a label site and add it here. ${on} just prints it and drops off the package. Never send money: Swapfume is always money-free.
+              ${labelHelp(myCC(), on)}
               <div style="margin-top:8px"><label class="btn small secondary">Add a prepaid shipping label<input type="file" id="labelFile" accept="application/pdf,image/jpeg,image/png" class="visually-hidden"></label></div>
               <p class="hint" style="margin:6px 0 0">PDF, JPG or PNG, up to 5 MB. Only you and ${on} can see it.</p>`
             : html`<b>Want to say thank you?</b> Once you accept, you can add a <b>prepaid shipping label</b> here so ${on} doesn't pay for shipping.`}</div>` : ""}</div>`
@@ -2448,7 +2464,6 @@
   const CAL_ICON = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg>`);
   const MEETUP_RULES = html`<ul class="tips">
     <li>Meet only in a <b>public place</b>: a café, park or library. Never a home address.</li>
-    <li><b>No selling.</b> Share, swap and gift only — Swapfume is never about money.</li>
     <li>Bring empty vials, labels and a funnel or decanting syringe if you'd like to decant.</li>
     <li>Tell a friend where you're going, and leave if anything feels wrong.</li></ul>`;
 
