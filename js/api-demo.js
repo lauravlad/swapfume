@@ -274,7 +274,7 @@
     if (kind === "mention" && db.notifications.some((n) => n.user_id === user && n.actor_id === actor && n.post_id === refs.post_id && Date.now() - new Date(n.created_at) < 6e4)) return;
     if (kind === "message") db.notifications = db.notifications.filter((n) => !(n.user_id === user && n.kind === "message" && n.thread_id === refs.thread_id && !n.read_at));
     db.notifications.push({ id: ++db.seq, user_id: user, actor_id: actor || null, kind, post_id: refs.post_id || null, swap_id: refs.swap_id || null,
-      thread_id: refs.thread_id || null, event_id: refs.event_id || null, circle_id: refs.circle_id || null, detail: String(detail || "").slice(0, 160), read_at: null, created_at: now() });
+      thread_id: refs.thread_id || null, event_id: refs.event_id || null, circle_id: refs.circle_id || null, perfume_id: refs.perfume_id || null, item_id: refs.item_id || null, detail: String(detail || "").slice(0, 160), read_at: null, created_at: now() });
   }
   // Groups (migration 030): the eight starter groups, with a few members and a post each in two of them.
   function groupsReady() {
@@ -319,6 +319,23 @@
   const canSeeCircle = (c) => !!uid && (c.host_id === uid || isAdmin() || db.circleMembers.some((m) => m.circle_id === c.id && m.user_id === uid)
     || (!prof(uid)?.is_banned && !c.is_hidden && !blockedWith(c.host_id) && c.country_code === ccOf(uid)));
   const circleNext = (c, pos) => { const ps = db.circleMembers.filter((m) => m.circle_id === c.id && m.position != null && m.position > pos).map((m) => m.position); return ps.length ? Math.min(...ps) : 0; };
+  // Wishlist alerts (same rules as migration 034): when a listing becomes available to swap, tell the
+  // members who want it: same country or friends, at most once per perfume per 7 days, unless switched off.
+  const isOpen = (i) => !!i.tradeable && !i.is_hidden && (i.quantity ?? 1) > 0;
+  function wishAlert(i, wasOpen) {
+    if (!isOpen(i) || wasOpen) return;
+    const owner = prof(i.owner_id); if (!owner || owner.is_banned) return;
+    const detail = ({ full: "Full bottle", decant: "Decant", sample: "Sample" })[i.size] + (i.volume_ml ? ` · ${+i.volume_ml} ml` : "");
+    const week = Date.now() - 7 * 864e5;
+    db.wishes.filter((w) => w.perfume_id === i.perfume_id && w.user_id !== i.owner_id).forEach((w) => {
+      const p = prof(w.user_id);
+      if (!p || p.is_banned || !p.adult_confirmed_at || p.wish_alerts === false) return;
+      const friends = db.friendships.some((f) => f.status === "accepted" && [f.user_a, f.user_b].includes(w.user_id) && [f.user_a, f.user_b].includes(i.owner_id));
+      if ((p.country_code || "US") !== (owner.country_code || "US") && !friends) return;
+      if ((db.notifications || []).some((n) => n.user_id === w.user_id && n.kind === "wish_listed" && n.perfume_id === i.perfume_id && new Date(n.created_at) > week)) return;
+      notify(w.user_id, i.owner_id, "wish_listed", { perfume_id: i.perfume_id, item_id: i.id }, detail);
+    });
+  }
   // Older demo data: build a starting set of notifications from what's already there.
   function seedNotifications() {
     db.notifications = [];
@@ -719,7 +736,8 @@
         const post = n.post_id && db.posts.find((x) => x.id === n.post_id), ev = n.event_id && (db.events || []).find((x) => x.id === n.event_id), sw = n.swap_id && db.swaps.find((x) => x.id === n.swap_id);
         return { ...clone(n), actor: n.actor_id ? lite(n.actor_id) : null, post: post ? { id: post.id, body: post.body, kind: post.kind } : null,
           event: ev ? { id: ev.id, title: ev.title } : null, swap: sw ? { id: sw.id, is_gift: !!sw.is_gift } : null,
-          circle: n.circle_id ? (({ id, title, kind }) => ({ id, title, kind }))((db.circles || []).find((x) => x.id === n.circle_id) || {}) : null };
+          circle: n.circle_id ? (({ id, title, kind }) => ({ id, title, kind }))((db.circles || []).find((x) => x.id === n.circle_id) || {}) : null,
+          perfume: n.perfume_id ? (({ id, brand, name }) => ({ id, brand, name }))(perf(n.perfume_id) || {}) : null };
       });
     },
     async unreadNotifications() {
@@ -752,6 +770,7 @@
       notify(from, uid, "invite_joined"); save();
       return prof(from).display_name;
     },
+    async setWishAlerts(on) { const p = prof(me()); p.wish_alerts = !!on; save(); return clone(p); },
     async setEmailActivity(on) { const p = prof(me()); p.email_activity = !!on; save(); return clone(p); },
     onNotification() { return () => {}; },
     // Demo stand-in for the AI: pretends it saw three bottles (the real one reads your photo).
@@ -809,10 +828,11 @@
       if (!["sample", "decant", "full"].includes(data.size)) fail("Pick a size.");
       const photo_url = photoFile ? (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl : null;
       const i = { id: ++db.seq, owner_id: uid, perfume_id: Number(data.perfume_id), size: data.size, volume_ml: data.volume_ml ? Number(data.volume_ml) : null, fill_pct: Math.max(0, Math.min(100, Number(data.fill_pct ?? 100))), quantity: qtyOk(data.quantity ?? 1), tradeable: !!data.tradeable && qtyOk(data.quantity ?? 1) > 0, photo_url, note: String(data.note || "").slice(0, 300), is_hidden: false, created_at: now() };
-      db.items.push(i); if (photo_url) keepPhoto(i.perfume_id, uid, photo_url, "listing"); save(); return withItem(i);
+      db.items.push(i); if (photo_url) keepPhoto(i.perfume_id, uid, photo_url, "listing"); wishAlert(i, false); save(); return withItem(i);
     },
     async updateItem(id, patch, photoFile) {
       const i = db.items.find((x) => x.id === Number(id) && x.owner_id === me()) || fail("Item not found.");
+      const wasOpen = isOpen(i);
       ["size", "note"].forEach((k) => { if (patch[k] !== undefined) i[k] = patch[k]; });
       if (patch.volume_ml !== undefined) i.volume_ml = patch.volume_ml ? Number(patch.volume_ml) : null;
       if (patch.fill_pct !== undefined) i.fill_pct = Math.max(0, Math.min(100, Number(patch.fill_pct)));
@@ -820,7 +840,7 @@
       if (patch.quantity !== undefined) i.quantity = qtyOk(patch.quantity);
       if (i.quantity === 0) i.tradeable = false; // none left = not open to trade (migration 017)
       if (photoFile) { i.photo_url = (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl; keepPhoto(i.perfume_id, uid, i.photo_url, "listing"); }
-      save(); return withItem(i);
+      wishAlert(i, wasOpen); save(); return withItem(i);
     },
     async deleteItem(id) { db.items = db.items.filter((x) => !(x.id === Number(id) && x.owner_id === me())); save(); },
 

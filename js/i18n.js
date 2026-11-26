@@ -88,6 +88,7 @@
     "Email me about new messages, comments, friend requests and swap updates I haven't seen (at most one email every 30 minutes)":
       "Trimite-mi email despre mesaje, comentarii, cereri de prietenie și noutăți la schimburi pe care nu le-am văzut (cel mult un email la 30 de minute)",
     "Email me when someone sends me a swap proposal or a gift": "Trimite-mi email când cineva îmi propune un schimb sau un cadou",
+    "Tell me when someone near me lists a perfume from my wishlist": "Anunță-mă când cineva din apropiere pune la schimb un parfum de pe lista mea de dorințe",
 
     // ---- Chat ----
     "No messages yet. Say hi! 👋": "Niciun mesaj încă. Spune salut! 👋", "Seen": "Văzut", "Add a photo ": "Adaugă o poză",

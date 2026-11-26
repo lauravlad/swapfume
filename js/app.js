@@ -518,7 +518,8 @@
       reply: [`replied to your comment`, post, "↩️"],
       mention: [`mentioned you`, post, "@"],
       claim_opened: [`opened a claim on a swap`, sw, "⚠️"],
-      claim_resolved: [`closed a claim on your swap`, sw, "✅"]
+      claim_resolved: [`closed a claim on your swap`, sw, "✅"],
+      wish_listed: [`listed ${n.perfume ? pTitle(n.perfume) : "a perfume"} from your wishlist. It's open to swap!`, n.perfume_id ? `#/perfume/${n.perfume_id}` : "#/", "💝"]
     };
     const [what, link, icon] = T[n.kind] || ["did something on Swapfume", "#/", "•"];
     const about = n.post?.body ? `“${n.post.body.slice(0, 60)}${n.post.body.length > 60 ? "…" : ""}”` : n.event?.title || n.circle?.title || "";
@@ -2216,6 +2217,7 @@
         ${myArea ? html`<div class="zip-preview"><div>${areaMap(myArea, p.city)}</div><p class="small muted">This is what members see on your profile: the general area, centred on a point blurred by several miles. Your ${C.postal} and exact location are never shown.</p></div>` : ""}</form>
       <div class="card"><h3>Emails</h3>
         <label class="switch"><input type="checkbox" id="emailNotif" ${p.email_notifications === false ? "" : raw("checked")}> Email me when someone sends me a swap proposal or a gift</label>
+        <label class="switch"><input type="checkbox" id="wishAlerts" ${p.wish_alerts === false ? "" : raw("checked")}> Tell me when someone near me lists a perfume from my wishlist</label>
         <label class="switch"><input type="checkbox" id="emailActivity" ${p.email_activity === false ? "" : raw("checked")}> Email me about new messages, comments, friend requests and swap updates I haven't seen (at most one email every 30 minutes)</label>
         <p class="hint" style="margin:6px 0 0">From hello@swapfume.com, one email per proposal. Account emails (like password resets) always come.</p></div>
       <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a></div></div>
@@ -2236,6 +2238,7 @@
       if (moved) await api.setMyCountry(cc);
       state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: Util.country(cc).name, bio: $("#pb").value });
       toast("Profile saved."); if (moved) route(); }); });
+    $("#wishAlerts")?.addEventListener("change", (e) => run(null, async () => { state.profile = await api.setWishAlerts(e.target.checked); toast(e.target.checked ? "You'll hear when a perfume you want is listed." : "Wishlist alerts are off."); }));
     $("#emailActivity")?.addEventListener("change", (e) => run(null, async () => { state.profile = await api.setEmailActivity(e.target.checked); toast(e.target.checked ? "You'll get an email about activity you haven't seen." : "Activity emails are off."); }));
     $("#emailNotif").addEventListener("change", (e) => run(null, async () => { state.profile = await api.setEmailNotifications(e.target.checked); toast(e.target.checked ? "You'll get an email for new proposals and gifts." : "Emails for new proposals and gifts are off."); }));
     $("#addrForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveAddr"), async () => { await api.saveMyAddress({ full_name: $("#an").value, address: $("#aa").value }); toast("Address saved."); }); });

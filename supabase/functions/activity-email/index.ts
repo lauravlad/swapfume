@@ -21,7 +21,7 @@ const reply = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
-type N = { actor_id?: string | null; kind: string; detail: string; post_id: number | null; swap_id: number | null; thread_id: number | null; event_id: number | null; circle_id: number | null; created_at: string; actor: { display_name: string } | null };
+type N = { actor_id?: string | null; kind: string; detail: string; post_id: number | null; swap_id: number | null; thread_id: number | null; event_id: number | null; circle_id: number | null; perfume_id?: number | null; perfume?: { brand: string; name: string } | null; created_at: string; actor: { display_name: string } | null };
 
 // Wording and link for each kind (kept in step with js/app.js → NOTIF_TEXT).
 function line(n: N) {
@@ -54,6 +54,7 @@ function line(n: N) {
     mention: [`${who} mentioned you${quote}`, `#/post/${n.post_id}`],
     claim_opened: [`${who} opened a claim on a swap (a package problem)`, `#/swap/${n.swap_id}`],
     claim_resolved: [`${who} closed a claim on your swap${quote}`, `#/swap/${n.swap_id}`],
+    wish_listed: [`${who} listed ${esc(n.perfume ? `${n.perfume.brand} ${n.perfume.name}` : "a perfume")} from your wishlist 💝${quote}`, `#/perfume/${n.perfume_id}`],
   };
   const [text, link] = T[n.kind] ?? [`${who} did something on Swapfume`, "#/notifications"];
   return `<li style="margin:0 0 12px"><a href="${SITE}${link}" style="color:#2A211E;text-decoration:none">${text}</a></li>`;
@@ -100,7 +101,7 @@ Deno.serve(async (req) => {
   for (const rid of recipients) {
     const [{ data: rows }, { data: to }] = await Promise.all([
       admin.from("notifications")
-        .select("kind, actor_id, detail, post_id, swap_id, thread_id, event_id, circle_id, created_at, actor:profiles!notifications_actor_id_fkey(display_name)")
+        .select("kind, actor_id, perfume_id, perfume:perfumes(brand, name), detail, post_id, swap_id, thread_id, event_id, circle_id, created_at, actor:profiles!notifications_actor_id_fkey(display_name)")
         .eq("user_id", rid).is("read_at", null).neq("kind", "like").order("created_at", { ascending: false }).limit(30),
       admin.auth.admin.getUserById(rid),
     ]);

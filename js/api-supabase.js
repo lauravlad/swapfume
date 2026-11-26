@@ -197,12 +197,15 @@
       // ---- Notifications (migration 027): written by database triggers, read here ----
       async listNotifications({ limit = 60 } = {}) {
         me();
-        return check(await sb.from("notifications").select(`*, actor:profiles!notifications_actor_id_fkey(${LITE}), post:posts(id,body,kind), event:events(id,title), swap:swaps(id,is_gift), circle:circles(id,title,kind)`)
+        return check(await sb.from("notifications").select(`*, actor:profiles!notifications_actor_id_fkey(${LITE}), post:posts(id,body,kind), event:events(id,title), swap:swaps(id,is_gift), circle:circles(id,title,kind), perfume:perfumes(id,brand,name)`)
           .order("created_at", { ascending: false }).limit(limit));
       },
       async unreadNotifications() { if (!uid) return 0; try { return check(await sb.rpc("unread_notifications")) || 0; } catch (e) { return 0; } },
       async markNotificationsRead(id = null) { check(await sb.rpc("mark_notifications_read", { p_id: id == null ? null : Number(id) })); },
       async deleteNotification(id) { check(await sb.from("notifications").delete().eq("id", Number(id))); },
+      async setWishAlerts(on) {
+        return check(await sb.from("profiles").update({ wish_alerts: !!on }).eq("id", me()).select().single());
+      },
       async setEmailActivity(on) {
         return check(await sb.from("profiles").update({ email_activity: !!on }).eq("id", me()).select().single());
       },
@@ -702,7 +705,7 @@
     };
     ["sendMessage", "commentPost", "sendFriendRequest", "respondFriendRequest", "respondSwap", "cancelSwap", "markShipped",
      "markReceived", "leaveReview", "joinEvent", "commentEvent", "cancelEvent", "openClaim", "resolveClaim",
-     "joinCircle", "startPassaround", "circleSent", "circleReceived", "drawGiveaway", "cancelCircle"].forEach((k) => {
+     "joinCircle", "startPassaround", "circleSent", "circleReceived", "drawGiveaway", "cancelCircle", "addItem", "updateItem"].forEach((k) => {
       const f = api[k];
       if (f) api[k] = async function (...a) { const r = await f.apply(this, a); nudgeEmails(); return r; };
     });

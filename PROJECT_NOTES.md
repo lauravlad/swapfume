@@ -69,6 +69,9 @@ Add `?demo=1` to any address (for example `https://swapfume.com/?demo=1`, or loc
   - **Romanian:** `js/i18n.js` translates the interface (footer: Română / English; Romanian phones get it by default). Members' own words are never translated. Sentences with names or numbers inside them are still English; add more lines to the dictionary in `js/i18n.js`.
   - The `our mission` section on the welcome page and at `#/mission`.
 
+- **2026-11-26 (later):** **wishlist alerts.** When a perfume becomes available to swap, members with it on their wishlist hear about it through the bell (and the activity email): same country or friends only, at most once per perfume per week, never between people who blocked each other; switch under Me. Migration 034 / `live-update/35_wishlist_alerts.sql`, tested on local Postgres (14 checks).
+- **Decided 2026-11-26:** no "Popular" feed for now. With few members a likes-ranked feed looks empty and rewards hauls, which goes against the mission. Pause new features, get real members using what's there, and simplify Community's 8 tabs before adding more.
+
 ## Turning on the 2026-11-26 update (in this order)
 
 1. **Database first.** In the Supabase SQL Editor run `supabase/live-update/28_notifications.sql` through `34_tracking_claims.sql`, in number order. The current site keeps working with the new database (every changed function keeps its old arguments working), so this can happen before the code goes live. Tested on 2026-11-26 on a local Postgres 17 (Homebrew) with stand-ins for Supabase's auth, storage and Realtime: migrations 001–033 all run in order, the seven new files run a second time without harm, and 62 behaviour checks pass as pretend members (privacy of addresses, notifications and invite codes; blocks; who may draw, pin, edit or close a claim; timing rules). Supabase itself can still differ in small ways: if a file stops with an error, stop there and send the message.

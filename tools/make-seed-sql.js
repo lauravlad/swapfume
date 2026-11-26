@@ -187,6 +187,7 @@ parts.push(['groups', head('030 interest groups', 'Same as supabase/migrations/0
 parts.push(['social_login_invites', head('031 sign in with Google/Apple, and invite links', 'Same as supabase/migrations/031_social_login_invites.sql.') + mig('031_social_login_invites.sql')]);
 parts.push(['posts_plus', head('032 richer posts: photos, polls, edits, replies, mentions, saved, search', 'Same as supabase/migrations/032_posts_plus.sql.') + mig('032_posts_plus.sql')]);
 parts.push(['tracking_claims', head('033 tracking numbers and didn\'t-arrive claims', 'Same as supabase/migrations/033_tracking_claims.sql.') + mig('033_tracking_claims.sql')]);
+parts.push(['wishlist_alerts', head('034 wishlist alerts', 'Same as supabase/migrations/034_wishlist_alerts.sql.') + mig('034_wishlist_alerts.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);
