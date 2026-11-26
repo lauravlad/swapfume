@@ -2106,7 +2106,6 @@
   const CAL_ICON = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" fill="none"/></svg>`);
   const MEETUP_RULES = html`<ul class="tips">
     <li>Meet only in a <b>public place</b>: a café, park or library. Never a home address.</li>
-    <li><b>No selling.</b> Share, swap and gift only — Swapfume is never about money.</li>
     <li>Bring empty vials, labels and a funnel or decanting syringe if you'd like to decant.</li>
     <li>Tell a friend where you're going, and leave if anything feels wrong.</li></ul>`;
 
