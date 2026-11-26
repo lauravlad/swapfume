@@ -28,6 +28,12 @@ window.APP_CONFIG = {
   // Email to the other member when someone proposes a swap or offers a gift
   // (supabase/functions/swap-email/index.ts). Its web address is "swift-processor" (Supabase picked it).
   SWAP_EMAIL_FUNCTION: "swift-processor",
+  // The activity-email Edge Function (messages, comments, friend requests, swap updates...). Its name
+  // in Supabase → Edge Functions once deployed; leave "" until then (in-app notifications still work).
+  ACTIVITY_EMAIL_FUNCTION: "",
+  // "Continue with ..." buttons on the sign-in card. Add "google" and/or "apple" here only after
+  // switching that provider on in Supabase → Authentication → Providers (see README → Sign in with Google/Apple).
+  OAUTH_PROVIDERS: [],
   // "Buy a sample" link, shown when nobody is swapping a perfume. Members never pay each other on Swapfume.
   // Empty = a plain web search. To send people to one shop, set its name and a search address with {q}
   // where the perfume name goes, e.g. BUY_SAMPLE_URL: "https://shop.example/search?q={q}".

@@ -184,6 +184,7 @@
   }
 
   let db, api_refreshed = false;
+  let needNotifSeed = false;
   function load() {
     try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; }
     // Version 4 = the current catalog. Older demo data can't be mapped onto it, so start fresh.
@@ -208,6 +209,7 @@
     // Launch update: blocks list, 18+ confirmation (demo members count as confirmed),
     // and any catalog perfumes added since this demo data was made.
     if (!db.blocks) { db.blocks = []; changed = true; }
+    if (!db.notifications) { needNotifSeed = true; changed = true; }
     db.perfumes.forEach((p) => {
       if (!p.perfumers || (!p.perfumers.length && perfumersFor(p.brand, p.name).length)) { p.perfumers = perfumersFor(p.brand, p.name); changed = true; }
       if (p.rating_count === undefined) { p.rating_avg = null; p.rating_count = 0; changed = true; }
@@ -250,6 +252,7 @@
     catch (e) { fail("This browser's demo storage is full. Try a smaller photo, or reset the demo."); }
   }
   load();
+  if (!db.notifications) needNotifSeed = true;
 
   let uid = null;
   try { uid = localStorage.getItem(SESSION) || null; } catch (e) {}
@@ -260,6 +263,74 @@
   const me = () => uid || fail("Please sign in first.");
   const prof = (id) => db.profiles.find((p) => p.id === id) || null;
   const lite = (id) => { const p = prof(id); return p && { id: p.id, display_name: p.display_name, city: p.city, country: p.country, country_code: p.country_code || "US", is_banned: p.is_banned, avatar_url: p.avatar_url || null }; };
+
+  // Notifications (same rules as notify() in migration 027): never yourself, never between people
+  // who blocked each other, one like per person per post, one unread message notice per conversation.
+  function notify(user, actor, kind, refs = {}, detail = "") {
+    if (!db.notifications) db.notifications = [];
+    if (!user || user === actor) return;
+    if (actor && db.blocks.some((b) => (b.blocker_id === user && b.blocked_id === actor) || (b.blocker_id === actor && b.blocked_id === user))) return;
+    if (kind === "like" && db.notifications.some((n) => n.user_id === user && n.actor_id === actor && n.kind === "like" && n.post_id === refs.post_id)) return;
+    if (kind === "mention" && db.notifications.some((n) => n.user_id === user && n.actor_id === actor && n.post_id === refs.post_id && Date.now() - new Date(n.created_at) < 6e4)) return;
+    if (kind === "message") db.notifications = db.notifications.filter((n) => !(n.user_id === user && n.kind === "message" && n.thread_id === refs.thread_id && !n.read_at));
+    db.notifications.push({ id: ++db.seq, user_id: user, actor_id: actor || null, kind, post_id: refs.post_id || null, swap_id: refs.swap_id || null,
+      thread_id: refs.thread_id || null, event_id: refs.event_id || null, circle_id: refs.circle_id || null, detail: String(detail || "").slice(0, 160), read_at: null, created_at: now() });
+  }
+  // Groups (migration 030): the eight starter groups, with a few members and a post each in two of them.
+  function groupsReady() {
+    if (db.groups) return;
+    db.groups = []; db.groupMembers = [];
+    [["niche", "Niche houses", "Le Labo, Byredo, MFK, Diptyque, Frédéric Malle and the small independent houses.", "🕯️"],
+     ["oud", "Ouds & ambers", "Middle Eastern perfumery, attars, ouds, ambers and resins.", "🪔"],
+     ["vintage", "Vintage & classics", "Old formulations, discontinued treasures and the great classics.", "🎞️"],
+     ["designer", "Designer favourites", "Dior, Chanel, YSL, Armani and every department-store love.", "💄"],
+     ["fresh", "Fresh & green", "Citrus, colognes, aquatics, greens and tea.", "🍋"],
+     ["gourmand", "Gourmands", "Vanilla, tonka, caramel, coffee: perfumes good enough to eat.", "🍮"],
+     ["decanting", "Decanters' corner", "Tips on decanting, vials, labels and packing that arrives safely.", "🧪"],
+     ["beginners", "Beginners welcome", "New to perfume? Ask anything. No question is silly here.", "🌱"]].forEach(([slug, name, description, emoji]) =>
+      db.groups.push({ id: ++db.seq, slug, name, description, emoji, created_by: null, is_official: true, is_hidden: false, created_at: daysAgo(60) }));
+    const G = (slug) => db.groups.find((g) => g.slug === slug).id;
+    const join = (slug, users) => users.forEach((u) => prof(u) && db.groupMembers.push({ group_id: G(slug), user_id: u, role: "member", joined_at: daysAgo(20) }));
+    join("vintage", ["m-margaux", "m-noor"]); join("oud", ["m-ravi", "m-theo"]); join("beginners", ["m-june", "m-noor", "m-elodie"]); join("decanting", ["m-theo", "m-margaux"]);
+    const post = (slug, author, kind, body, d) => prof(author) && db.posts.push({ id: ++db.seq, author_id: author, country_code: ccOf(author), kind, body, perfume_id: null, photo_url: null, is_hidden: false, group_id: G(slug), created_at: daysAgo(d) });
+    post("beginners", "m-june", "question", "What's the difference between EDT and EDP, really? Is it just strength?", 2);
+    post("decanting", "m-theo", "thoughts", "Tip: label your vials BEFORE you fill them. Ink doesn't stick to a wet atomizer. Ask me how I know 🙃", 4);
+    post("oud", "m-ravi", "sotd", "Weekend oud day. Something smoky and resinous for a cold evening.", 1);
+    save();
+  }
+  // Pass-arounds and giveaways: created on first use, with two examples so the demo has something to show.
+  function circlesReady() {
+    if (db.circles) return;
+    db.circles = []; db.circleMembers = [];
+    const find = (b, n) => db.perfumes.find((p) => p.brand === b && p.name === n)?.id || db.perfumes[0].id;
+    const later = (d) => new Date(Date.now() + d * 864e5).toISOString();
+    if (prof("m-noor")) {
+      db.circles.push({ id: ++db.seq, host_id: "m-noor", kind: "giveaway", country_code: "US", title: "Musk samples for new members", description: "I have more musk than one person needs! Five 2 ml samples, free, for anyone new to Swapfume. Just enter and I'll draw on Sunday.",
+        perfume_id: find("Narciso Rodriguez", "For Her"), size: "sample", amount: "2 ml sample", spots: 5, ends_at: later(3), status: "open", current_pos: null, is_hidden: false, created_at: daysAgo(1) });
+      ["m-june", "m-ravi"].forEach((u) => prof(u) && db.circleMembers.push({ circle_id: db.seq, user_id: u, joined_at: daysAgo(0.5), position: null, received_at: null, sent_at: null, won: false }));
+    }
+    if (prof("m-theo")) {
+      db.circles.push({ id: ++db.seq, host_id: "m-theo", kind: "passaround", country_code: "US", title: "Smoky woods pass-around", description: "My bottle of Tam Dao goes on a trip. Take up to 2 ml into your own vial, wrap it well and send it on within 5 days. It comes home to me at the end.",
+        perfume_id: find("Diptyque", "Tam Dao"), size: "full", amount: "take up to 2 ml", spots: 6, ends_at: null, status: "open", current_pos: null, is_hidden: false, created_at: daysAgo(2) });
+      ["m-june"].forEach((u) => prof(u) && db.circleMembers.push({ circle_id: db.seq, user_id: u, joined_at: daysAgo(1), position: null, received_at: null, sent_at: null, won: false }));
+    }
+    save();
+  }
+  const canSeeCircle = (c) => !!uid && (c.host_id === uid || isAdmin() || db.circleMembers.some((m) => m.circle_id === c.id && m.user_id === uid)
+    || (!prof(uid)?.is_banned && !c.is_hidden && !blockedWith(c.host_id) && c.country_code === ccOf(uid)));
+  const circleNext = (c, pos) => { const ps = db.circleMembers.filter((m) => m.circle_id === c.id && m.position != null && m.position > pos).map((m) => m.position); return ps.length ? Math.min(...ps) : 0; };
+  // Older demo data: build a starting set of notifications from what's already there.
+  function seedNotifications() {
+    db.notifications = [];
+    const ago = (h) => new Date(Date.now() - h * 36e5).toISOString();
+    (db.friendships || []).filter((f) => f.status === "pending").forEach((f) => notify(f.requested_by === f.user_a ? f.user_b : f.user_a, f.requested_by, "friend_request"));
+    (db.postComments || []).forEach((c) => { const p = (db.posts || []).find((x) => x.id === c.post_id); if (p) notify(p.author_id, c.user_id, "comment", { post_id: p.id }, c.body); });
+    (db.postLikes || []).forEach((l) => { const p = (db.posts || []).find((x) => x.id === l.post_id); if (p) notify(p.author_id, l.user_id, "like", { post_id: p.id }); });
+    db.swaps.filter((s) => s.status === "proposed").forEach((s) => notify(s.recipient_id, s.proposer_id, s.is_gift ? "gift" : "swap_proposal", { swap_id: s.id }));
+    db.reviews.forEach((r) => notify(r.reviewee_id, r.reviewer_id, "review", { swap_id: r.swap_id }, `${r.rating}★ ${r.comment}`));
+    // spread them over the last few days, oldest read, newest unread
+    db.notifications.sort(() => Math.random() - 0.5).forEach((n, k, all) => { n.created_at = ago(2 + k * 7); if (k > 5) n.read_at = n.created_at; });
+  }
   const ccOf = (id) => prof(id)?.country_code || "US";
   const perf = (id) => db.perfumes.find((p) => p.id === id) || null;
   // Duplicate catching — mirrors migration 015 (the live site does this in the database).
@@ -317,12 +388,26 @@
   }
   const friendRow = (other) => db.friendships.find((f) => (f.user_a === uid && f.user_b === other) || (f.user_b === uid && f.user_a === other));
   const isFriend = (other) => friendRow(other)?.status === "accepted";
-  const canSeePost = (p) => !!uid && (p.author_id === uid || isAdmin() || (!prof(uid)?.is_banned && !p.is_hidden && !blockedWith(p.author_id) && (p.country_code === ccOf(uid) || isFriend(p.author_id))));
+  const canSeePost = (p) => !!uid && (p.author_id === uid || isAdmin() || (!prof(uid)?.is_banned && !p.is_hidden && !blockedWith(p.author_id) && (p.group_id ? !!(db.groups || []).find((g) => g.id === p.group_id && !g.is_hidden) : (p.country_code === ccOf(uid) || isFriend(p.author_id)))));
+  // Mentions (same rule as notify_mentions in migration 032): "@Name" = first word of a display name,
+  // among your friends and the people already in this post's conversation.
+  function demoMentions(post, text) {
+    const names = new Set([...String(text || "").matchAll(/@([A-Za-zÀ-ÿ][\w'-]{1,39})/g)].map((m) => m[1].toLowerCase()));
+    if (!names.size) return;
+    const inConvo = new Set([post.author_id, ...db.postComments.filter((c) => c.post_id === post.id).map((c) => c.user_id)]);
+    db.profiles.filter((p) => p.id !== uid && !p.is_banned && names.has(String(p.display_name || "").trim().split(/\s+/)[0].toLowerCase()) && (isFriend(p.id) || inConvo.has(p.id)))
+      .slice(0, 10).forEach((p) => notify(p.id, uid, "mention", { post_id: post.id }, text));
+  }
   const withPost = (p) => {
     const likes = db.postLikes.filter((x) => x.post_id === p.id);
+    const votes = (db.pollVotes || []).filter((v) => v.post_id === p.id);
+    const extra = { photos: p.photos || [], saved: (db.savedPosts || []).some((s) => s.user_id === uid && s.post_id === p.id),
+      poll_votes: p.poll ? p.poll.map((_, i) => votes.filter((v) => v.choice === i).length) : undefined,
+      my_vote: p.poll ? (votes.find((v) => v.user_id === uid)?.choice ?? null) : undefined };
     const pf = perf(p.perfume_id);
     return { ...clone(p), author: lite(p.author_id), perfume: pf ? { id: pf.id, brand: pf.brand, name: pf.name, concentration: pf.concentration, family: pf.family } : null,
-      like_count: likes.length, liked: likes.some((x) => x.user_id === uid), comment_count: db.postComments.filter((c) => c.post_id === p.id && !blockedWith(c.user_id)).length };
+      like_count: likes.length, liked: likes.some((x) => x.user_id === uid), comment_count: db.postComments.filter((c) => c.post_id === p.id && !blockedWith(c.user_id)).length,
+      group: p.group_id ? (({ id, name, emoji }) => ({ id, name, emoji }))((db.groups || []).find((g) => g.id === p.group_id) || {}) : null, ...extra };
   };
   const canSeeItem = (i) => i.owner_id === uid || ((!i.is_hidden || isAdmin()) && !blockedWith(i.owner_id));
   const withItem = (i) => ({ ...clone(i), perfume: clone(perf(i.perfume_id)), owner: lite(i.owner_id) });
@@ -499,6 +584,176 @@
     },
     async notifySwap() { /* the demo doesn't send emails */ },
     async setEmailNotifications(on) { const p = prof(me()); p.email_notifications = !!on; save(); return clone(p); },
+    // ---- Groups (same rules as migration 030) ----
+    async listGroups() {
+      me(); groupsReady();
+      return db.groups.filter((g) => !g.is_hidden || isAdmin() || g.created_by === uid).map((g) => {
+        const ms = db.groupMembers.filter((m) => m.group_id === g.id);
+        return { ...clone(g), member_count: ms.length, joined: ms.some((m) => m.user_id === uid), role: ms.find((m) => m.user_id === uid)?.role || null };
+      }).sort((a, b) => (b.is_official - a.is_official) || a.name.localeCompare(b.name));
+    },
+    async getGroup(id) { return (await this.listGroups()).find((g) => g.id === Number(id)) || null; },
+    async joinGroup(id, join) {
+      me(); groupsReady(); const g = db.groups.find((x) => x.id === Number(id));
+      const mine = (m) => m.group_id === Number(id) && m.user_id === uid;
+      if (!join) { db.groupMembers = db.groupMembers.filter((m) => !mine(m)); save(); return; }
+      active(); if (!g || g.is_hidden) fail("Group not found.");
+      if (db.groupMembers.filter((m) => m.user_id === uid).length >= 30) fail("You can be in up to 30 groups.");
+      if (!db.groupMembers.some(mine)) db.groupMembers.push({ group_id: g.id, user_id: uid, role: "member", joined_at: now() }); save();
+    },
+    async createGroup({ name, description, emoji }) {
+      active(); groupsReady(); name = String(name || "").trim();
+      if (name.length < 3) fail("Give the group a name.");
+      if (db.groups.some((g) => g.name.toLowerCase() === name.toLowerCase())) fail("There's already a group with that name. Join it instead!");
+      if (db.groups.filter((g) => g.created_by === uid).length >= 2) fail("You can start up to 2 groups.");
+      const g = { id: ++db.seq, slug: null, name: name.slice(0, 60), description: String(description || "").trim().slice(0, 500), emoji: String(emoji || "").trim().slice(0, 8) || "🫧", created_by: uid, is_official: false, is_hidden: false, created_at: now() };
+      db.groups.push(g); db.groupMembers.push({ group_id: g.id, user_id: uid, role: "admin", joined_at: now() }); save(); return g.id;
+    },
+    async setGroupHidden(id, hidden) { adminOnly(); const g = db.groups.find((x) => x.id === Number(id)); if (g) { g.is_hidden = !!hidden; save(); } },
+    // ---- Pass-arounds and giveaways (same rules as migration 029) ----
+    async listCircles({ mine = false } = {}) {
+      me(); circlesReady();
+      return db.circles.filter((c) => canSeeCircle(c) && (!mine || c.host_id === uid)).sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => {
+        const ms = db.circleMembers.filter((m) => m.circle_id === c.id);
+        const p = perf(c.perfume_id);
+        return { ...clone(c), host: lite(c.host_id), perfume: p ? { id: p.id, brand: p.brand, name: p.name, concentration: p.concentration, image_url: p.image_url, member_photo_url: p.member_photo_url } : null,
+          count: ms.filter((m) => m.user_id !== c.host_id).length, joined: ms.some((m) => m.user_id === uid), won: ms.some((m) => m.user_id === uid && m.won) };
+      });
+    },
+    async getCircle(id) {
+      me(); circlesReady();
+      const c = db.circles.find((x) => x.id === Number(id));
+      if (!c || !canSeeCircle(c)) return null;
+      const members = db.circleMembers.filter((m) => m.circle_id === c.id).sort((a, b) => a.joined_at.localeCompare(b.joined_at)).map((m) => ({ ...clone(m), user: lite(m.user_id) }));
+      return { ...clone(c), host: lite(c.host_id), perfume: clone(perf(c.perfume_id)), members, me: members.find((m) => m.user_id === uid) || null };
+    },
+    async createCircle({ kind, title, description, perfumeId, size, amount, spots, endsAt }) {
+      active(); circlesReady();
+      if (!["passaround", "giveaway"].includes(kind)) fail("Choose a pass-around or a giveaway.");
+      title = String(title || "").trim(); if (title.length < 3) fail("Give it a short title.");
+      if (!perf(Number(perfumeId))) fail("Pick a perfume from the catalog.");
+      spots = Number(spots);
+      if (kind === "passaround" && !(spots >= 2 && spots <= 20)) fail("A pass-around is for 2 to 20 people.");
+      if (kind === "giveaway" && !(spots >= 1 && spots <= 50)) fail("Give away 1 to 50 samples.");
+      const ends = endsAt ? new Date(endsAt) : null;
+      if (kind === "giveaway" && (!ends || ends < Date.now() + 36e5 || ends > Date.now() + 30 * 864e5)) fail("Entries should close between 1 hour and 30 days from now.");
+      if (db.circles.filter((c) => c.host_id === uid && ["open", "running"].includes(c.status)).length >= 3) fail("You already host 3 pass-arounds or giveaways. Finish one first.");
+      const c = { id: ++db.seq, host_id: uid, kind, country_code: ccOf(uid), title: title.slice(0, 100), description: String(description || "").trim().slice(0, 1500), perfume_id: Number(perfumeId),
+        size: size || "sample", amount: String(amount || "").trim().slice(0, 60), spots, ends_at: kind === "giveaway" ? ends.toISOString() : null, status: "open", current_pos: null, is_hidden: false, created_at: now() };
+      db.circles.push(c); save(); return c.id;
+    },
+    async joinCircle(id, going) {
+      me(); circlesReady();
+      const c = db.circles.find((x) => x.id === Number(id)); if (!c || !canSeeCircle(c)) fail("Not found.");
+      const mine = (m) => m.circle_id === c.id && m.user_id === uid;
+      if (!going) { if (c.status !== "open") fail("It has already started, so you can't leave now. Message the host."); db.circleMembers = db.circleMembers.filter((m) => !mine(m)); save(); return; }
+      active();
+      if (c.host_id === uid) fail("You are the host.");
+      if (c.status !== "open" || (c.ends_at && c.ends_at < now())) fail("This is closed now.");
+      if (c.country_code !== ccOf(uid)) fail("This is in another country.");
+      if (db.circleMembers.some(mine)) return;
+      const n = db.circleMembers.filter((m) => m.circle_id === c.id).length;
+      if (c.kind === "passaround" && n >= c.spots) fail("This pass-around is full.");
+      if (c.kind === "passaround" && !db.addresses.find((a) => a.user_id === uid)) fail("Add your shipping address under Me first, so the bottle can reach you.");
+      db.circleMembers.push({ circle_id: c.id, user_id: uid, joined_at: now(), position: null, received_at: null, sent_at: null, won: false });
+      notify(c.host_id, uid, "circle_join", { circle_id: c.id }, c.title); save();
+    },
+    async startPassaround(id) {
+      me(); const c = db.circles.find((x) => x.id === Number(id));
+      if (!c || c.host_id !== uid) fail("Only the host can start it.");
+      if (c.kind !== "passaround" || c.status !== "open") fail("This can't be started now.");
+      const ms = db.circleMembers.filter((m) => m.circle_id === c.id && m.user_id !== uid).sort((a, b) => a.joined_at.localeCompare(b.joined_at));
+      if (!ms.length) fail("Wait until someone joins.");
+      db.circleMembers.push({ circle_id: c.id, user_id: uid, joined_at: now(), position: 0, received_at: null, sent_at: null, won: false });
+      ms.forEach((m, i) => { m.position = i + 1; notify(m.user_id, uid, "circle_started", { circle_id: c.id }, c.title); });
+      c.status = "running"; c.current_pos = 0; save();
+    },
+    async circleNextAddress(id) {
+      me(); const c = db.circles.find((x) => x.id === Number(id));
+      if (!c || c.status !== "running" || !db.circleMembers.some((m) => m.circle_id === c.id && m.user_id === uid && m.position === c.current_pos)) return null;
+      const next = db.circleMembers.find((m) => m.circle_id === c.id && m.position === circleNext(c, c.current_pos));
+      const a = db.addresses.find((x) => x.user_id === next?.user_id);
+      return next ? { display_name: prof(next.user_id)?.display_name, full_name: a?.full_name || null, address: a?.address || null } : null;
+    },
+    async circleSent(id) {
+      me(); const c = db.circles.find((x) => x.id === Number(id));
+      if (!c || c.status !== "running") fail("This isn't running.");
+      const m = db.circleMembers.find((x) => x.circle_id === c.id && x.user_id === uid && x.position === c.current_pos);
+      if (!m) fail("It isn't your turn to send it.");
+      m.sent_at = now();
+      const next = db.circleMembers.find((x) => x.circle_id === c.id && x.position === circleNext(c, c.current_pos));
+      notify(next?.user_id, uid, "circle_turn", { circle_id: c.id }, c.title); save();
+    },
+    async circleReceived(id) {
+      me(); const c = db.circles.find((x) => x.id === Number(id));
+      if (!c || c.status !== "running") fail("This isn't running.");
+      const m = db.circleMembers.find((x) => x.circle_id === c.id && x.user_id === uid);
+      if (!m || m.position == null || m.position !== circleNext(c, c.current_pos)) fail("It isn't coming to you yet.");
+      const from = db.circleMembers.find((x) => x.circle_id === c.id && x.position === c.current_pos);
+      if (!from?.sent_at) fail("It hasn't been sent to you yet.");
+      m.received_at = now(); c.current_pos = m.position;
+      if (m.position === 0) c.status = "done"; else notify(c.host_id, uid, "circle_moved", { circle_id: c.id }, c.title);
+      save();
+    },
+    async drawGiveaway(id) {
+      me(); const c = db.circles.find((x) => x.id === Number(id));
+      if (!c || c.host_id !== uid) fail("Only the host can draw.");
+      if (c.kind !== "giveaway" || c.status !== "open") fail("This can't be drawn now.");
+      const pool = db.circleMembers.filter((m) => m.circle_id === c.id && !prof(m.user_id)?.is_banned && !blockedWith(m.user_id)).sort(() => Math.random() - 0.5).slice(0, c.spots);
+      if (!pool.length) fail("Nobody has entered yet.");
+      pool.forEach((m) => { m.won = true; notify(m.user_id, uid, "circle_won", { circle_id: c.id }, c.title); });
+      c.status = "done"; save(); return pool.length;
+    },
+    async cancelCircle(id) {
+      me(); const c = db.circles.find((x) => x.id === Number(id));
+      if (!c || c.host_id !== uid) fail("Only the host can cancel it.");
+      if (!["open", "running"].includes(c.status)) return;
+      c.status = "cancelled";
+      db.circleMembers.filter((m) => m.circle_id === c.id && m.user_id !== uid).forEach((m) => notify(m.user_id, uid, "circle_cancelled", { circle_id: c.id }, c.title)); save();
+    },
+    async setCircleHidden(id, hidden) { adminOnly(); const c = db.circles.find((x) => x.id === Number(id)); if (c) { c.is_hidden = !!hidden; save(); } },
+    // ---- Notifications (migration 027) ----
+    async listNotifications({ limit = 60 } = {}) {
+      me(); if (needNotifSeed) { needNotifSeed = false; seedNotifications(); save(); }
+      return (db.notifications || []).filter((n) => n.user_id === uid).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit).map((n) => {
+        const post = n.post_id && db.posts.find((x) => x.id === n.post_id), ev = n.event_id && (db.events || []).find((x) => x.id === n.event_id), sw = n.swap_id && db.swaps.find((x) => x.id === n.swap_id);
+        return { ...clone(n), actor: n.actor_id ? lite(n.actor_id) : null, post: post ? { id: post.id, body: post.body, kind: post.kind } : null,
+          event: ev ? { id: ev.id, title: ev.title } : null, swap: sw ? { id: sw.id, is_gift: !!sw.is_gift } : null,
+          circle: n.circle_id ? (({ id, title, kind }) => ({ id, title, kind }))((db.circles || []).find((x) => x.id === n.circle_id) || {}) : null };
+      });
+    },
+    async unreadNotifications() {
+      if (!uid) return 0; if (needNotifSeed) { needNotifSeed = false; seedNotifications(); save(); }
+      return (db.notifications || []).filter((n) => n.user_id === uid && !n.read_at).length;
+    },
+    async markNotificationsRead(id = null) { me(); (db.notifications || []).forEach((n) => { if (n.user_id === uid && !n.read_at && (id == null || n.id === Number(id))) n.read_at = now(); }); save(); },
+    async deleteNotification(id) { me(); db.notifications = (db.notifications || []).filter((n) => !(n.user_id === uid && n.id === Number(id))); save(); },
+    async signInWithProvider() { fail("Google and Apple sign-in work on the real site, not in demo mode."); },
+    // ---- Invite links (same rules as migration 031) ----
+    async myInviteCode() {
+      me(); db.inviteCodes = db.inviteCodes || {};
+      if (!db.inviteCodes[uid]) { db.inviteCodes[uid] = Math.random().toString(36).slice(2, 12); save(); }
+      return db.inviteCodes[uid];
+    },
+    async invitePreview(code) {
+      const owner = Object.entries(db.inviteCodes || {}).find(([, c]) => c === String(code || "").trim().toLowerCase())?.[0];
+      return owner && !prof(owner)?.is_banned ? prof(owner).display_name : null;
+    },
+    async claimInvite(code) {
+      const meP = prof(me());
+      if (meP.invited_by || new Date(meP.created_at) < Date.now() - 7 * 864e5) return null;
+      const from = Object.entries(db.inviteCodes || {}).find(([, c]) => c === String(code || "").trim().toLowerCase())?.[0];
+      if (!from || from === uid || blockedWith(from) || prof(from)?.is_banned) return null;
+      meP.invited_by = from;
+      const [a, b] = uid < from ? [uid, from] : [from, uid];
+      const f = db.friendships.find((x) => x.user_a === a && x.user_b === b);
+      if (f) { f.status = "accepted"; f.accepted_at = f.accepted_at || now(); }
+      else db.friendships.push({ user_a: a, user_b: b, requested_by: from, status: "accepted", created_at: now(), accepted_at: now() });
+      notify(from, uid, "invite_joined"); save();
+      return prof(from).display_name;
+    },
+    async setEmailActivity(on) { const p = prof(me()); p.email_activity = !!on; save(); return clone(p); },
+    onNotification() { return () => {}; },
     // Demo stand-in for the AI: pretends it saw three bottles (the real one reads your photo).
     async identifyPerfumes(file) {
       me(); await Util.resizeImage(file, 400, 0.6); await new Promise((r) => setTimeout(r, 900));
@@ -599,7 +854,7 @@
       if (!ok(theirItemIds, recipientId)) fail("Some of their items are no longer available.");
       const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, is_gift: false, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
       checkQty([...myItemIds, ...theirItemIds], qty);
-      db.swaps.push(s);
+      db.swaps.push(s); notify(recipientId, uid, s.is_gift ? "gift" : "swap_proposal", { swap_id: s.id });
       [...myItemIds, ...theirItemIds].forEach((id) => {
         const i = db.items.find((x) => x.id === Number(id));
         db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml, quantity: Number(qty[id] || 1) });
@@ -622,7 +877,7 @@
       if (!myItemIds.every((id) => db.items.find((i) => i.id === Number(id) && i.owner_id === uid && i.tradeable && !i.is_hidden))) fail("Some of your items are not available.");
       const s = { id: ++db.seq, proposer_id: uid, recipient_id: recipientId, status: "proposed", method, is_gift: true, meet_plan: "", meet_plan_by: null, meet_plan_at: null, message: String(message || "").slice(0, 600), proposer_shipped_at: null, recipient_shipped_at: null, proposer_received_at: null, recipient_received_at: null, created_at: now(), updated_at: now() };
       checkQty(myItemIds, qty);
-      db.swaps.push(s);
+      db.swaps.push(s); notify(recipientId, uid, s.is_gift ? "gift" : "swap_proposal", { swap_id: s.id });
       myItemIds.forEach((id) => {
         const i = db.items.find((x) => x.id === Number(id));
         db.swapItems.push({ id: ++db.seq, swap_id: s.id, item_id: i.id, from_user_id: i.owner_id, perfume_id: i.perfume_id, size: i.size, volume_ml: i.volume_ml, quantity: Number(qty[id] || 1) });
@@ -661,24 +916,33 @@
       if (!t) { t = { id: ++db.seq, kind: "item", swap_id: null, item_id: i.id, perfume_id: i.perfume_id, user_a: uid, user_b: i.owner_id, created_at: now(), last_message_at: null }; db.threads.push(t); save(); }
       return t.id;
     },
-    async sendMessage(threadId, body) {
+    async sendMessage(threadId, body, photoFile = null) {
       active(); const t = myThread(threadId);
       const other = t.user_a === uid ? t.user_b : t.user_a;
       if (blockedWith(other)) fail("You can't message this member.");
       body = String(body || "").trim();
-      if (!body) fail("Write a message first.");
+      const photo_url = photoFile ? (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl : null;
+      if (!body && !photo_url) fail("Write a message first.");
       if (body.length > 1000) fail("Messages can be up to 1,000 characters.");
-      const m = { id: ++db.seq, thread_id: t.id, sender_id: uid, body, created_at: now() };
-      db.messages.push(m); t.last_message_at = m.created_at; setRead(t.id); save(); return m.id;
+      const m = { id: ++db.seq, thread_id: t.id, sender_id: uid, body, photo_url, created_at: now() };
+      db.messages.push(m); t.last_message_at = m.created_at; setRead(t.id);
+      notify(other, uid, "message", { thread_id: t.id, swap_id: t.swap_id }, body || "📷 Photo"); save(); return m.id;
     },
     async markThreadRead(threadId) { myThread(threadId); setRead(Number(threadId)); save(); },
+    // Demo: no server to push from, so a light check every few seconds stands in for Realtime.
+    watchThread(threadId, { onMessage } = {}) {
+      const id = Number(threadId); let seen = db.messages.filter((m) => m.thread_id === id).length;
+      const timer = setInterval(() => { const n = db.messages.filter((m) => m.thread_id === id).length; if (n !== seen) { seen = n; onMessage?.({}); } }, 3000);
+      return { stop() { clearInterval(timer); }, typing() {} };
+    },
     async unreadThreads() { if (!uid) return 0; return (await this.listThreads()).filter((t) => t.unread).length; },
     async getThread(id) {
       me(); const t = db.threads.find((x) => x.id === Number(id) && [x.user_a, x.user_b].includes(uid));
       if (!t) return null;
       return { ...clone(t), a: lite(t.user_a), b: lite(t.user_b), perfume: t.perfume_id ? clone(perf(t.perfume_id)) : null,
         swap: t.swap_id ? (({ id, is_gift, status }) => ({ id, is_gift, status }))(db.swaps.find((s) => s.id === t.swap_id) || {}) : null,
-        messages: clone(db.messages.filter((m) => m.thread_id === t.id).sort((a, b) => a.created_at.localeCompare(b.created_at))) };
+        messages: clone(db.messages.filter((m) => m.thread_id === t.id).sort((a, b) => a.created_at.localeCompare(b.created_at))),
+        other_read_at: db.threadReads.find((r) => r.thread_id === t.id && r.user_id !== uid)?.last_read_at || null };
     },
     async listThreads() {
       me();
@@ -747,12 +1011,12 @@
         parts.forEach((x) => { const i = db.items.find((y) => y.id === x.item_id); if (!i || i.quantity < (x.quantity || 1)) { const p = perf(x.perfume_id); fail(`Not enough left of ${p?.brand} ${p?.name}: it may have been swapped already.`); } });
         parts.forEach((x) => { const i = db.items.find((y) => y.id === x.item_id); i.quantity -= x.quantity || 1; if (i.quantity <= 0) { i.quantity = 0; i.tradeable = false; } });
       }
-      s.status = accept ? "accepted" : "declined"; s.updated_at = now(); save();
+      s.status = accept ? "accepted" : "declined"; s.updated_at = now(); notify(s.proposer_id, uid, "swap_" + s.status, { swap_id: s.id }); save();
     },
     async cancelSwap(id) {
       const s = mySwap(id);
       if (s.proposer_id !== uid || s.status !== "proposed") fail("This proposal cannot be withdrawn.");
-      s.status = "cancelled"; s.updated_at = now(); save();
+      s.status = "cancelled"; s.updated_at = now(); notify(s.recipient_id, uid, "swap_cancelled", { swap_id: s.id }); save();
     },
     async markShipped(id) {
       const s = mySwap(id);
@@ -761,7 +1025,8 @@
       if (s.status !== "accepted") fail("You can mark shipping only on an accepted swap.");
       if (s.is_gift && s.proposer_id !== uid) fail("This is a gift to you — there is nothing for you to ship.");
       const k = s.proposer_id === uid ? "proposer_shipped_at" : "recipient_shipped_at";
-      s[k] = s[k] || now(); s.updated_at = now(); save();
+      const first = !s[k]; s[k] = s[k] || now(); s.updated_at = now();
+      if (first) notify(s.proposer_id === uid ? s.recipient_id : s.proposer_id, uid, "swap_shipped", { swap_id: s.id }); save();
     },
     async markReceived(id) {
       const s = mySwap(id);
@@ -772,10 +1037,61 @@
       if (!(mine ? s.recipient_shipped_at : s.proposer_shipped_at)) fail("They have not marked their package as shipped yet.");
       const k = mine ? "proposer_received_at" : "recipient_received_at";
       s[k] = s[k] || now();
-      if (s.recipient_received_at && (s.is_gift || s.proposer_received_at)) s.status = "completed";
+      const other = mine ? s.recipient_id : s.proposer_id;
+      if (s.recipient_received_at && (s.is_gift || s.proposer_received_at)) { s.status = "completed"; notify(other, uid, "swap_completed", { swap_id: s.id }); }
+      else notify(other, uid, "swap_received", { swap_id: s.id });
       s.updated_at = now(); save();
     },
 
+    // ---- Tracking numbers and claims (same rules as migration 033) ----
+    async setTracking(id, tracking) {
+      const s = mySwap(id); if (![s.proposer_id, s.recipient_id].includes(uid)) fail("Not your swap.");
+      if (s.method === "meetup") fail("This swap is a meet-up.");
+      const v = String(tracking || "").trim() || null;
+      if (v && (v.length > 60 || !/^[A-Za-z0-9 .:#/-]+$/.test(v))) fail("That doesn't look like a tracking number.");
+      const mine = s.proposer_id === uid;
+      if (!(mine ? s.proposer_shipped_at : s.recipient_shipped_at)) fail("Mark your package as shipped first.");
+      s[mine ? "proposer_tracking" : "recipient_tracking"] = v; s.updated_at = now(); save();
+    },
+    async listClaims({ swapId = null, open = false } = {}) {
+      me();
+      return (db.claims || []).filter((c) => (!swapId || c.swap_id === Number(swapId)) && (!open || c.status === "open")).filter((c) => {
+        const s = db.swaps.find((x) => x.id === c.swap_id); return isAdmin() || (s && [s.proposer_id, s.recipient_id].includes(uid));
+      }).sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => {
+        const s = db.swaps.find((x) => x.id === c.swap_id);
+        return { ...clone(c), opener: lite(c.opened_by), swap: s ? { ...clone(s), proposer: lite(s.proposer_id), recipient: lite(s.recipient_id) } : null };
+      });
+    },
+    async openClaim(id, kind, details) {
+      active(); const s = mySwap(id);
+      if (!["not_arrived", "damaged", "not_as_described"].includes(kind)) fail("Choose what went wrong.");
+      if (s.method === "meetup" || !["accepted", "completed"].includes(s.status)) fail("Claims are for mailed swaps that were accepted.");
+      const mine = s.proposer_id === uid;
+      if (s.is_gift && mine) fail("You are the giver. Message the receiver instead.");
+      const theirShip = mine ? s.recipient_shipped_at : s.proposer_shipped_at, myRecv = mine ? s.proposer_received_at : s.recipient_received_at;
+      if (kind === "not_arrived") {
+        if (myRecv) fail("You marked it as received.");
+        if (!theirShip || new Date(theirShip) > Date.now() - 7 * 864e5) fail("Give it 7 days after it was shipped. Most packages arrive within a week.");
+      } else if (!myRecv && !theirShip) fail("Nothing has been shipped to you yet.");
+      db.claims = db.claims || [];
+      if (db.claims.some((c) => c.swap_id === s.id && c.opened_by === uid && c.status === "open")) fail("You already have an open claim on this swap.");
+      const c = { id: ++db.seq, swap_id: s.id, opened_by: uid, kind, details: String(details || "").trim().slice(0, 1000), status: "open", resolution: "", resolved_by: null, created_at: now(), resolved_at: null };
+      db.claims.push(c);
+      notify(mine ? s.recipient_id : s.proposer_id, uid, "claim_opened", { swap_id: s.id });
+      db.profiles.filter((p) => p.is_admin && p.id !== uid && p.id !== (mine ? s.recipient_id : s.proposer_id)).forEach((p) => notify(p.id, uid, "claim_opened", { swap_id: s.id }));
+      save(); return c.id;
+    },
+    async resolveClaim(id, resolution) {
+      me(); const c = (db.claims || []).find((x) => x.id === Number(id)) || fail("Claim not found.");
+      if (!isAdmin() && c.opened_by !== uid) fail("Only an admin (or the person who opened it) can close a claim.");
+      if (c.status === "resolved") return;
+      Object.assign(c, { status: "resolved", resolution: String(resolution || "").trim().slice(0, 1000), resolved_by: uid, resolved_at: now() });
+      const s = db.swaps.find((x) => x.id === c.swap_id);
+      if (s) { notify(s.proposer_id, uid, "claim_resolved", { swap_id: s.id }, resolution); notify(s.recipient_id, uid, "claim_resolved", { swap_id: s.id }, resolution); }
+      save();
+    },
+    // Demo-only: pretend a shipment happened 8 days ago, to try "didn't arrive".
+    demoAgeShipment(id) { const s = db.swaps.find((x) => x.id === Number(id)); if (!s) return; ["proposer_shipped_at", "recipient_shipped_at"].forEach((k) => { if (s[k]) s[k] = daysAgo(8); }); save(); },
     async listReviews({ revieweeId, reviewerId, swapId } = {}) {
       return db.reviews.filter((r) => (!revieweeId || r.reviewee_id === revieweeId) && (!reviewerId || r.reviewer_id === reviewerId) && (!swapId || r.swap_id === Number(swapId)))
         .sort((a, b) => b.created_at.localeCompare(a.created_at)).map((r) => ({ ...clone(r), reviewer: lite(r.reviewer_id) }));
@@ -789,7 +1105,7 @@
       const n = Number(rating);
       if (!(n >= 1 && n <= 5)) fail("Pick 1 to 5 stars.");
       db.reviews.push({ id: ++db.seq, swap_id: s.id, reviewer_id: uid, reviewee_id: revieweeId, rating: n, comment: String(comment || "").slice(0, 600), created_at: now() });
-      save();
+      notify(revieweeId, uid, "review", { swap_id: s.id }, `${n}★ ${String(comment || "")}`); save();
     },
     async getStats(userIds) {
       const out = {};
@@ -1145,7 +1461,7 @@
     },
     async cancelEvent(id) {
       const e = db.events.find((x) => x.id === Number(id) && x.organizer_id === me() && x.status === "active") || fail("Only the organizer can cancel this event.");
-      e.status = "cancelled"; save();
+      e.status = "cancelled"; db.eventAttendees.filter((x) => x.event_id === e.id).forEach((x) => notify(x.user_id, uid, "meetup_cancelled", { event_id: e.id }, e.title)); save();
     },
     async joinEvent(id, going) {
       active(); const e = db.events.find((x) => x.id === Number(id));
@@ -1157,13 +1473,14 @@
       const n = db.eventAttendees.filter((x) => x.event_id === e.id).length;
       if (db.eventAttendees.some(mine)) return;
       if (e.max_people && n >= e.max_people) fail("This event is full.");
-      db.eventAttendees.push({ event_id: e.id, user_id: uid, created_at: now() }); save();
+      db.eventAttendees.push({ event_id: e.id, user_id: uid, created_at: now() }); notify(e.organizer_id, uid, "meetup_join", { event_id: e.id }); save();
     },
     async commentEvent(id, body) {
       active(); const e = db.events.find((x) => x.id === Number(id));
       if (!e || !canSeeEvent(e)) fail("Event not found.");
       body = String(body || "").trim(); if (!body) fail("Write something first.");
-      db.eventComments.push({ id: ++db.seq, event_id: e.id, user_id: uid, body: body.slice(0, 600), created_at: now() }); save();
+      db.eventComments.push({ id: ++db.seq, event_id: e.id, user_id: uid, body: body.slice(0, 600), created_at: now() });
+      new Set([e.organizer_id, ...db.eventAttendees.filter((x) => x.event_id === e.id).map((x) => x.user_id)]).forEach((u) => notify(u, uid, "meetup_comment", { event_id: e.id }, body)); save();
     },
     async deleteEventComment(id) {
       const c = db.eventComments.find((x) => x.id === Number(id)); if (!c) return;
@@ -1195,27 +1512,29 @@
       if (f) {
         if (f.status === "accepted") return "friends";
         if (f.requested_by === uid) return "sent";
-        f.status = "accepted"; f.accepted_at = now(); save(); return "friends";
+        f.status = "accepted"; f.accepted_at = now(); notify(userId, uid, "friend_accept"); save(); return "friends";
       }
       if (db.friendships.filter((x) => x.requested_by === uid && x.created_at > new Date(Date.now() - 864e5).toISOString()).length >= 40) fail("That's a lot of friend requests today. Please try again tomorrow.");
       const [a, b] = uid < userId ? [uid, userId] : [userId, uid];
-      db.friendships.push({ user_a: a, user_b: b, requested_by: uid, status: "pending", created_at: now(), accepted_at: null }); save(); return "sent";
+      db.friendships.push({ user_a: a, user_b: b, requested_by: uid, status: "pending", created_at: now(), accepted_at: null }); notify(userId, uid, "friend_request"); save(); return "sent";
     },
     async respondFriendRequest(userId, accept) {
       me(); const f = friendRow(userId);
       if (!f || f.status !== "pending" || f.requested_by !== userId) { if (accept) fail("That request is no longer open."); return; }
-      if (accept) { active(); f.status = "accepted"; f.accepted_at = now(); } else db.friendships = db.friendships.filter((x) => x !== f);
+      if (accept) { active(); f.status = "accepted"; f.accepted_at = now(); notify(userId, uid, "friend_accept"); } else db.friendships = db.friendships.filter((x) => x !== f);
       save();
     },
     async removeFriend(userId) { me(); const f = friendRow(userId); if (f) { db.friendships = db.friendships.filter((x) => x !== f); save(); } },
 
     // ---- Community: posts ----
-    async listPosts({ scope = "discover", authorId, limit = 40 } = {}) {
-      me(); await tick();
+    async listPosts({ scope = "discover", authorId, groupId, limit = 40 } = {}) {
+      me(); await tick(); groupsReady();
+      if (groupId) return db.posts.filter((p) => p.group_id === Number(groupId) && canSeePost(p) && !prof(p.author_id)?.is_banned)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit).map(withPost);
       const fr = new Set(db.friendships.filter((f) => f.status === "accepted" && [f.user_a, f.user_b].includes(uid)).map((f) => (f.user_a === uid ? f.user_b : f.user_a)));
       return db.posts.filter((p) => canSeePost(p) && !prof(p.author_id)?.is_banned
-          && (authorId ? p.author_id === authorId : scope === "feed" ? (p.author_id === uid || fr.has(p.author_id)) : p.country_code === ccOf(uid)))
-        .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit).map(withPost);
+          && (authorId ? p.author_id === authorId : !p.group_id && (scope === "feed" ? (p.author_id === uid || fr.has(p.author_id)) : p.country_code === ccOf(uid))))
+        .sort((a, b) => (!authorId && scope !== "feed" ? (!!b.is_pinned - !!a.is_pinned) : 0) || b.created_at.localeCompare(a.created_at)).slice(0, limit).map(withPost);
     },
     async getPost(id) {
       me(); const p = db.posts.find((x) => x.id === Number(id));
@@ -1223,15 +1542,50 @@
       const comments = db.postComments.filter((c) => c.post_id === p.id && !blockedWith(c.user_id)).sort((a, b) => a.created_at.localeCompare(b.created_at)).map((c) => ({ ...clone(c), user: lite(c.user_id) }));
       return { ...withPost(p), comments, comment_count: comments.length };
     },
-    async createPost({ kind, body, perfumeId, photoFile }) {
-      active(); await tick();
+    async createPost({ kind, body, perfumeId, photoFile, photoFiles = [], groupId = null, poll = null }) {
+      active(); await tick(); groupsReady();
+      if (groupId && !db.groupMembers.some((m) => m.group_id === Number(groupId) && m.user_id === uid)) fail("Join the group to post in it.");
       body = String(body || "").trim(); if (!body) fail("Write something first.");
       if (!["sotd", "discovery", "haul", "question", "thoughts"].includes(kind)) fail("Pick what kind of post this is.");
       if (perfumeId && !perf(Number(perfumeId))) fail("Pick a perfume from the catalog.");
       if (db.posts.filter((p) => p.author_id === uid && p.created_at > new Date(Date.now() - 864e5).toISOString()).length >= 20) fail("You've posted a lot today. Please come back tomorrow.");
-      const photo_url = photoFile ? (await Util.resizeImage(photoFile, 700, 0.78)).dataUrl : null;
-      const p = { id: ++db.seq, author_id: uid, country_code: ccOf(uid), kind, body: body.slice(0, 1000), perfume_id: perfumeId ? Number(perfumeId) : null, photo_url, is_hidden: false, created_at: now() };
-      db.posts.push(p); if (photo_url && p.perfume_id) keepPhoto(p.perfume_id, uid, photo_url, "post"); save(); return p.id;
+      const files = [photoFile, ...photoFiles].filter(Boolean).slice(0, 4), urls = [];
+      for (const f of files) urls.push((await Util.resizeImage(f, 700, 0.78)).dataUrl);
+      const photo_url = urls[0] || null;
+      const opts = poll ? poll.map((o) => String(o || "").trim().slice(0, 80)).filter(Boolean) : null;
+      if (poll && (opts.length < 2 || opts.length > 4)) fail("A poll needs 2 to 4 options.");
+      const p = { id: ++db.seq, author_id: uid, country_code: ccOf(uid), kind, body: body.slice(0, 1000), perfume_id: perfumeId ? Number(perfumeId) : null, photo_url, photos: urls.slice(1), poll: opts && opts.length ? opts : null,
+        is_hidden: false, is_pinned: false, edited_at: null, group_id: groupId ? Number(groupId) : null, created_at: now() };
+      db.posts.push(p); if (photo_url && p.perfume_id) keepPhoto(p.perfume_id, uid, photo_url, "post"); demoMentions(p, body); save(); return p.id;
+    },
+    async editPost(id, body) {
+      const p = db.posts.find((x) => x.id === Number(id) && x.author_id === me()) || fail("You can only edit your own posts.");
+      body = String(body || "").trim(); if (!body) fail("Write something first.");
+      p.body = body.slice(0, 1000); p.edited_at = now(); save();
+    },
+    async pinPost(id, on) { adminOnly(); const p = db.posts.find((x) => x.id === Number(id)); if (p) { p.is_pinned = !!on; save(); } },
+    async votePoll(id, choice) {
+      active(); const p = db.posts.find((x) => x.id === Number(id));
+      if (!p || !canSeePost(p)) fail("Post not found.");
+      if (!p.poll || !(choice >= 0 && choice < p.poll.length)) fail("That isn't an option.");
+      db.pollVotes = (db.pollVotes || []).filter((v) => !(v.post_id === p.id && v.user_id === uid));
+      db.pollVotes.push({ post_id: p.id, user_id: uid, choice: Number(choice), created_at: now() }); save();
+    },
+    async savePost(id, on) {
+      me(); db.savedPosts = (db.savedPosts || []).filter((s) => !(s.user_id === uid && s.post_id === Number(id)));
+      if (on) db.savedPosts.push({ user_id: uid, post_id: Number(id), created_at: now() }); save();
+    },
+    async listSavedPosts() {
+      me(); return (db.savedPosts || []).filter((s) => s.user_id === uid).sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .map((s) => db.posts.find((p) => p.id === s.post_id)).filter((p) => p && canSeePost(p)).map(withPost);
+    },
+    async searchPeople(q) {
+      me(); const t = String(q || "").trim().toLowerCase(); if (t.length < 2) return [];
+      return db.profiles.filter((p) => p.id !== uid && !p.is_banned && p.adult_confirmed_at && !blockedWith(p.id) && String(p.display_name || "").toLowerCase().includes(t)).slice(0, 20).map((p) => lite(p.id));
+    },
+    async searchPosts(q) {
+      me(); const t = String(q || "").trim().toLowerCase(); if (t.length < 2) return [];
+      return db.posts.filter((p) => canSeePost(p) && !prof(p.author_id)?.is_banned && p.body.toLowerCase().includes(t)).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 30).map(withPost);
     },
     async deletePost(id) {
       const p = db.posts.find((x) => x.id === Number(id)); if (!p) return;
@@ -1243,15 +1597,24 @@
       active(); const p = db.posts.find((x) => x.id === Number(id));
       if (!p || !canSeePost(p)) fail("Post not found.");
       const mine = (x) => x.post_id === p.id && x.user_id === uid;
-      if (on) { if (!db.postLikes.some(mine)) db.postLikes.push({ post_id: p.id, user_id: uid, created_at: now() }); }
+      if (on) { if (!db.postLikes.some(mine)) { db.postLikes.push({ post_id: p.id, user_id: uid, created_at: now() }); notify(p.author_id, uid, "like", { post_id: p.id }); } }
       else db.postLikes = db.postLikes.filter((x) => !mine(x));
       save();
     },
-    async commentPost(id, body) {
+    async commentPost(id, body, parentId = null) {
       active(); const p = db.posts.find((x) => x.id === Number(id));
       if (!p || !canSeePost(p)) fail("Post not found.");
       body = String(body || "").trim(); if (!body) fail("Write something first.");
-      db.postComments.push({ id: ++db.seq, post_id: p.id, user_id: uid, body: body.slice(0, 600), created_at: now() }); save();
+      let parent = parentId ? db.postComments.find((c) => c.id === Number(parentId) && c.post_id === p.id) : null;
+      if (parentId && !parent) fail("That comment is gone.");
+      if (parent?.parent_id) parent = db.postComments.find((c) => c.id === parent.parent_id) || parent;
+      const before = new Set(db.postComments.filter((c) => c.post_id === p.id).map((c) => c.user_id));
+      db.postComments.push({ id: ++db.seq, post_id: p.id, user_id: uid, body: body.slice(0, 600), parent_id: parent ? parent.id : null, created_at: now() });
+      const pa = parent?.user_id || null;
+      if (pa) notify(pa, uid, "reply", { post_id: p.id }, body);
+      if (p.author_id !== pa) notify(p.author_id, uid, "comment", { post_id: p.id }, body);
+      before.forEach((u) => { if (u !== p.author_id && u !== pa) notify(u, uid, "also_commented", { post_id: p.id }, body); });
+      demoMentions(p, body); save();
     },
     async deletePostComment(id) {
       const c = db.postComments.find((x) => x.id === Number(id)); if (!c) return;

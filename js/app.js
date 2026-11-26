@@ -22,6 +22,8 @@
   // "?demo=1" in the address runs the demo (pretend members, data only in this browser),
   // even on the live site — handy for testing changes and showing the app.
   const forceDemo = new URLSearchParams(location.search).has("demo");
+  try { const inv = new URLSearchParams(location.search).get("invite"); if (inv && /^[a-z0-9]{4,20}$/i.test(inv)) localStorage.setItem("swapfume_invite", inv.toLowerCase()); } catch (e) { /* private mode */ }
+  const pendingInvite = () => { try { return localStorage.getItem("swapfume_invite"); } catch (e) { return null; } };
   if (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && !forceDemo) {
     // supabase-js ships with the site (js/vendor) so the app starts without waiting on another server;
     // the CDN copy is only a fallback.
@@ -59,7 +61,7 @@
   const HOME_TITLE = "Swapfume — Swap the scents you love";
   function setTitle() {
     const h = view.querySelector("h1"), t = h?.textContent.replace(/\s+/g, " ").trim();
-    document.title = t ? `${t} · Swapfume` : HOME_TITLE;
+    document.title = (notifCount ? `(${notifCount}) ` : "") + (t ? `${t} · Swapfume` : HOME_TITLE);
   }
   // While a page is appearing, its cards and tiles rise in one after another (CSS; off with reduced motion).
   let enterTimer;
@@ -239,6 +241,10 @@
   }
 
   // ---------- Photo picker: a big, obvious button with a preview ----------
+  const OAUTH_ICON = {
+    google: `<svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6H1.3a12 12 0 0 0 0 10.8z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z"/></svg>`,
+    apple: `<svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><path fill="currentColor" d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9a4.8 4.8 0 0 0-3.8-2c-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9a5 5 0 0 0-4.2 2.6c-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.5 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4a10 10 0 0 0 1.4-2.8c-.1 0-2.6-1-2.6-4.2zM13.9 5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>`
+  };
   const CAMERA = raw(`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13.2" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`);
   function photoPicker(name, currentUrl) {
     return html`<label class="photo-pick">
@@ -454,6 +460,69 @@
       const asks = fr.filter((r) => r.status === "received").length;
       $$("[data-commdot]").forEach((d) => (d.hidden = !asks));
     } catch (e) { /* not critical */ }
+    refreshNotifCount();
+  }
+  // ---------- Notifications (migration 027) ----------
+  let notifCount = 0;
+  async function refreshNotifCount() {
+    if (!state.uid) return;
+    notifCount = await api.unreadNotifications().catch(() => 0);
+    $$("[data-notifcount]").forEach((b) => { b.hidden = !notifCount; b.textContent = notifCount > 99 ? "99+" : String(notifCount); });
+    $$(".bell").forEach((b) => b.setAttribute("aria-label", notifCount ? `Notifications, ${notifCount} unread` : "Notifications"));
+    setTitle();
+  }
+  // What each kind says and where it leads (kept in step with supabase/functions/activity-email).
+  function notifInfo(n) {
+    const who = n.actor?.display_name || "A member", q = n.detail ? `“${n.detail.length > 90 ? n.detail.slice(0, 90) + "…" : n.detail}”` : "";
+    const post = n.post_id ? `#/post/${n.post_id}` : "#/community", sw = `#/swap/${n.swap_id}`, ev = `#/meetup/${n.event_id}`;
+    const T = {
+      message: [`sent you a message`, n.thread_id ? `#/chat/${n.thread_id}` : "#/messages", "💬"],
+      comment: [`commented on your post`, post, "💬"],
+      also_commented: [`also commented on a post you joined`, post, "💬"],
+      like: [`liked your post`, post, "♥"],
+      friend_request: [`sent you a friend request`, "#/friends", "👋"],
+      friend_accept: [`accepted your friend request`, `#/u/${n.actor_id}`, "🤝"],
+      swap_proposal: [`would like to swap with you`, sw, "🔁"],
+      gift: [`wants to give you a gift`, sw, "🎁"],
+      swap_accepted: [`accepted your swap`, sw, "🎉"],
+      swap_declined: [`declined your swap`, sw, "🔁"],
+      swap_cancelled: [`withdrew a swap proposal`, sw, "🔁"],
+      swap_shipped: [`shipped their side of your swap`, sw, "📦"],
+      swap_received: [`received your package`, sw, "📬"],
+      swap_completed: [`completed your swap. Leave a review?`, sw, "✨"],
+      review: [`left you a review`, `#/u/${state.uid}`, "★"],
+      meetup_join: [`is coming to your meetup`, ev, "📍"],
+      meetup_comment: [`commented on a meetup`, ev, "💬"],
+      meetup_cancelled: [`cancelled a meetup you joined`, ev, "📍"],
+      circle_join: [n.circle?.kind === "giveaway" ? `entered your giveaway` : `joined your pass-around`, `#/circle/${n.circle_id}`, "🫶"],
+      circle_started: [`started the pass-around. You're on the route!`, `#/circle/${n.circle_id}`, "🧭"],
+      circle_turn: [`sent the pass-around bottle on to you`, `#/circle/${n.circle_id}`, "📦"],
+      circle_moved: [`received your pass-around bottle`, `#/circle/${n.circle_id}`, "🧭"],
+      circle_won: [`drew you as a winner of their giveaway!`, `#/circle/${n.circle_id}`, "🎁"],
+      circle_cancelled: [`cancelled a pass-around or giveaway you joined`, `#/circle/${n.circle_id}`, "🫶"],
+      invite_joined: [`joined Swapfume with your invite! You're now friends.`, `#/u/${n.actor_id}`, "💐"],
+      reply: [`replied to your comment`, post, "↩️"],
+      mention: [`mentioned you`, post, "@"],
+      claim_opened: [`opened a claim on a swap`, sw, "⚠️"],
+      claim_resolved: [`closed a claim on your swap`, sw, "✅"]
+    };
+    const [what, link, icon] = T[n.kind] || ["did something on Swapfume", "#/", "•"];
+    const about = n.post?.body ? `“${n.post.body.slice(0, 60)}${n.post.body.length > 60 ? "…" : ""}”` : n.event?.title || n.circle?.title || "";
+    return { who, what, link, icon, quote: q || (["like", "meetup_join"].includes(n.kind) || n.kind.startsWith("circle_") ? about : ""), text: `${who} ${what}` };
+  }
+  let stopNotif = null, notifPoll = null;
+  function watchNotifications() {
+    if (stopNotif) stopNotif();
+    clearInterval(notifPoll); stopNotif = null;
+    if (!state.uid) return;
+    // Instant when Supabase Realtime is on; a quiet check every minute either way.
+    stopNotif = api.onNotification((n) => {
+      refreshNotifCount();
+      if (location.hash === "#/notifications") { route(); return; }
+      if (n.kind === "message" && location.hash === `#/chat/${n.thread_id}`) return;
+      api.listNotifications({ limit: 1 }).then(([x]) => { if (x && x.id === n.id) toast(notifInfo(x).text); }).catch(() => {});
+    });
+    notifPoll = setInterval(() => { if (!document.hidden) refreshNotifCount(); }, 60000);
   }
 
   // ======================================================================
@@ -532,6 +601,7 @@
     setView(html`<form class="card narrow" id="agForm"><div class="eyebrow">One quick check</div><h1>Please confirm your age</h1>
       <p class="muted">Swapfume is only for people ${CFG.MIN_AGE} and older, because swaps mean shipping perfume and sharing addresses with other members. We keep only a yes/no — never your birthday.</p>
       <div class="field"><label for="agDob">Date of birth</label><input id="agDob" type="date" required min="1900-01-01" max="${new Date().toISOString().slice(0, 10)}" autocomplete="bday"></div>
+      <div class="field"><label for="agCc">Country you live in</label><select id="agCc">${Util.COUNTRIES.map((c) => html`<option value="${c.code}" ${c.code === (state.profile?.country_code || "US") ? raw("selected") : ""}>${c.name}</option>`)}</select></div>
       <div class="field row"><button class="btn" id="agBtn">Confirm</button><button type="button" class="btn ghost" id="agOut">Sign out</button></div></form>`);
     $("#agOut").addEventListener("click", () => api.signOut());
     $("#agForm").addEventListener("submit", (e) => {
@@ -539,6 +609,9 @@
       run($("#agBtn"), async () => {
         if (!isAdult($("#agDob").value)) throw new Error(`Sorry — Swapfume is only for people ${CFG.MIN_AGE} or older.`);
         await api.confirmAdult($("#agDob").value);
+        if ($("#agCc").value !== (state.profile?.country_code || "US")) await api.setMyCountry($("#agCc").value).catch(() => {});
+        const inv = pendingInvite();
+        if (inv) { try { localStorage.removeItem("swapfume_invite"); } catch (e) { /* ignore */ } const name = await api.claimInvite(inv).catch(() => null); if (name) toast(`You and ${name} are now friends 💐`); }
         state.profile = await api.getProfile(state.uid); route();
       });
     });
@@ -610,6 +683,9 @@
           <div id="askHost" hidden>${countryRequestForm()}</div>
         </div>
       <div class="card" id="authCard">
+        <div id="inviteHost"></div>
+        ${(CFG.OAUTH_PROVIDERS || []).length ? html`<div class="oauth">${(CFG.OAUTH_PROVIDERS || []).map((pr) => html`<button type="button" class="btn secondary block oauth-btn" data-oauth="${pr}">${raw(OAUTH_ICON[pr] || "")}<span>Continue with ${pr === "apple" ? "Apple" : pr === "google" ? "Google" : pr}</span></button>`)}
+          <p class="small muted" style="margin:4px 0 0;text-align:center">You'll confirm you're ${CFG.MIN_AGE}+ on the next screen.</p><div class="or"><span>or with email</span></div></div>` : ""}
         <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-tab="in">Sign in</button><button role="tab" aria-selected="false" data-tab="up">Create account</button></div>
         <form id="authForm">
           <div class="field" id="nameField" hidden><label for="dn">Display name</label><input id="dn" type="text" maxlength="40" autocomplete="nickname" placeholder="What should people call you?"></div>
@@ -651,6 +727,9 @@
       });
     });
     $$("[data-as]").forEach((b) => b.addEventListener("click", () => api.demoSwitchUser(b.dataset.as)));
+    $$("[data-oauth]").forEach((b) => b.addEventListener("click", () => run(b, () => api.signInWithProvider(b.dataset.oauth))));
+    const inv = pendingInvite();
+    if (inv) api.invitePreview(inv).then((name) => { const h = $("#inviteHost"); if (name && h) h.innerHTML = val(html`<div class="notice rose invite-banner">💐 <b>${name}</b> invited you to Swapfume. Join and you'll be friends right away.</div>`); }).catch(() => {});
     $("#askCountry").addEventListener("click", () => { $("#askHost").hidden = false; $("#askCountry").hidden = true; $("#acCountry").focus(); });
     bindCountryRequestForm();
     // "Sign in" (top) and "Create account" (hero) jump down to the form with the right tab chosen.
@@ -706,6 +785,270 @@
   }
   const hasSupplyLinks = () => !!supplyLink("x");
   const AMAZON_DISCLOSURE = "As an Amazon Associate, Swapfume earns from qualifying purchases. It doesn't change the price you pay.";
+  async function pageNotifications() {
+    const list = await api.listNotifications();
+    const day = (d) => { const t = new Date(d), n = new Date(); const diff = (new Date(n.toDateString()) - new Date(t.toDateString())) / 864e5; return diff < 1 ? "Today" : diff < 2 ? "Yesterday" : diff < 7 ? "This week" : "Earlier"; };
+    const groups = [];
+    list.forEach((n) => { const g = day(n.created_at); const last = groups[groups.length - 1]; if (last && last[0] === g) last[1].push(n); else groups.push([g, [n]]); });
+    const unread = list.filter((n) => !n.read_at).length;
+    setView(html`<div class="narrow" style="max-width:720px;margin:0 auto">
+      <div class="page-head row" style="justify-content:space-between;align-items:end"><div><div class="eyebrow">Activity</div><h1>Notifications</h1></div>
+        ${unread ? html`<button class="btn small secondary" id="readAll">Mark all as read</button>` : ""}</div>
+      ${list.length ? groups.map(([g, ns]) => html`<h2 class="notif-day">${g}</h2><ul class="notif-list">${ns.map((n) => { const i = notifInfo(n); return html`
+        <li class="notif${n.read_at ? "" : " unread"}" data-n="${n.id}">
+          <a href="${i.link}" class="notif-link" data-open="${n.id}">
+            <span class="notif-av">${n.actor ? avatar(n.actor) : html`<span class="avatar">•</span>`}<span class="notif-ico" aria-hidden="true">${i.icon}</span></span>
+            <span class="notif-body"><span><b>${i.who}</b> ${i.what}</span>${i.quote ? html`<span class="notif-quote">${i.quote}</span>` : ""}<span class="notif-time">${ago(n.created_at)}</span></span>
+          </a>
+          <button class="notif-x" data-del="${n.id}" aria-label="Remove this notification">×</button>
+        </li>`; })}</ul>`)
+      : html`<div class="empty"><h3>You're all caught up</h3><p>When someone messages you, comments, sends a friend request or answers a swap, it shows up here.</p></div>`}
+      <p class="small muted" style="margin-top:20px">Emails about this activity: <a href="#/me">change under Me</a>.</p></div>`);
+    $("#readAll")?.addEventListener("click", () => run($("#readAll"), async () => { await api.markNotificationsRead(); route(); }));
+    $$("[data-open]").forEach((a) => a.addEventListener("click", () => { api.markNotificationsRead(a.dataset.open).then(refreshNotifCount).catch(() => {}); }));
+    $$("[data-del]").forEach((b) => b.addEventListener("click", () => run(null, async () => { await api.deleteNotification(b.dataset.del); b.closest("li").hidden = true; refreshNotifCount(); })));
+    // Seen: clear the badge a moment after the page shows (the unread ones stay highlighted until you leave).
+    if (unread) setTimeout(() => { if (location.hash === "#/notifications") api.markNotificationsRead().then(refreshNotifCount).catch(() => {}); }, 1500);
+  }
+
+  async function pageSaved() {
+    const [posts, friends] = await Promise.all([api.listSavedPosts(), friendMap()]);
+    setView(html`<div class="page-head"><div class="eyebrow">Just for you</div><h1>Saved posts</h1><p>Posts you saved for later. Only you can see this list.</p></div>
+      ${communityTabs("saved")}
+      <div class="post-list" id="posts">${posts.length ? posts.map((p) => postCard(p, { friends })) : html`<div class="empty"><h3>Nothing saved yet</h3><p>Tap 🔖 Save on any post to keep it here.</p></div>`}</div>`);
+    bindPosts($("#posts"));
+  }
+  async function pageSearch(params) {
+    const q = (params?.get?.("q") || "").trim();
+    const [people, posts, friends] = q.length >= 2 ? await Promise.all([api.searchPeople(q), api.searchPosts(q), friendMap()]) : [[], [], new Map()];
+    setView(html`<div class="page-head"><div class="eyebrow">Find people and posts</div><h1>Search</h1></div>
+      ${communityTabs("search")}
+      <form class="row" id="sForm" style="gap:8px;margin-bottom:16px"><input id="sQ" type="search" class="grow" value="${q}" placeholder="A name, a perfume, a word…" aria-label="Search people and posts"><button class="btn">Search</button></form>
+      ${q.length >= 2 ? html`
+        <h2 class="section-title">People</h2>
+        ${people.length ? html`<ul class="list card">${people.map((u) => html`<li class="friend-row">${avatar(u)}<div class="grow"><a href="#/u/${u.id}"><b>${u.display_name}</b></a><div class="small muted">${[u.city, u.country].filter(Boolean).join(", ")}</div></div>
+          ${friends.get(u.id) === "friends" ? html`<span class="small muted">Friend</span>` : ""}</li>`)}</ul>` : html`<p class="muted">No members match “${q}”.</p>`}
+        <h2 class="section-title">Posts</h2>
+        <div class="post-list" id="posts">${posts.length ? posts.map((p) => postCard(p, { friends })) : html`<p class="muted">No posts mention “${q}”.</p>`}</div>
+        <p class="small muted">Looking for a perfume? <a href="#/catalog?q=${encodeURIComponent(q)}">Search the catalog for “${q}”</a>.</p>`
+      : html`<p class="muted">Type at least 2 letters.</p>`}`);
+    $("#sForm").addEventListener("submit", (e) => { e.preventDefault(); go(`/search?q=${encodeURIComponent($("#sQ").value.trim())}`); });
+    if (!q) $("#sQ").focus();
+    if ($("#posts")) bindPosts($("#posts"));
+  }
+
+  // ---------- Groups (migration 030) ----------
+  async function pageGroups() {
+    const gs = await api.listGroups();
+    const mine = gs.filter((g) => g.joined), rest = gs.filter((g) => !g.joined);
+    const card = (g) => html`<a class="group-card card" href="#/group/${g.id}"><span class="group-emoji" aria-hidden="true">${g.emoji}</span>
+      <span class="group-body"><b>${g.name}</b><span class="small muted">${g.description}</span><span class="small muted">${g.member_count} member${g.member_count === 1 ? "" : "s"}${g.joined ? " · joined" : ""}</span></span></a>`;
+    setView(html`<div class="page-head"><div class="eyebrow">Find your people</div><h1>Groups</h1><p>Clubs for every taste, open to members in every country. Join a few and their posts gather in each group.</p></div>
+      ${communityTabs("groups")}
+      ${mine.length ? html`<h2 class="section-title">Your groups</h2><div class="group-list">${mine.map(card)}</div>` : ""}
+      <div class="row between" style="margin-top:18px"><h2 class="section-title" style="margin:0">${mine.length ? "More groups" : "All groups"}</h2><a class="btn small secondary" href="#/group/new">Start a group</a></div>
+      <div class="group-list" style="margin-top:10px">${rest.map(card)}</div>`);
+  }
+  async function pageGroup(id) {
+    const [g, posts, friends] = await Promise.all([api.getGroup(id), api.listPosts({ groupId: id }), friendMap()]);
+    if (!g) return setView(html`<div class="empty"><h3>Group not found</h3><a class="btn secondary" href="#/groups">All groups</a></div>`);
+    setView(html`<a href="#/groups" class="btn ghost small">&larr; Groups</a>
+      <div class="group-head card"><span class="group-emoji big" aria-hidden="true">${g.emoji}</span>
+        <div class="grow"><h1 style="margin:0">${g.name}</h1><p class="muted" style="margin:6px 0">${g.description}</p>
+          <span class="small muted">${g.member_count} member${g.member_count === 1 ? "" : "s"}${g.is_official ? " · a Swapfume group" : ""}</span></div>
+        <div>${g.joined ? html`<button class="btn small ghost" id="gLeave">Leave</button>` : html`<button class="btn" id="gJoin">Join</button>`}
+          ${state.profile?.is_admin ? html`<button class="btn small ghost" id="gHide">${g.is_hidden ? "Unhide" : "Hide"} group</button>` : ""}</div></div>
+      ${g.joined ? composer(g) : html`<p class="notice">Join the group to post here. Anyone can read along.</p>`}
+      <div class="post-list" id="posts">${posts.length ? posts.map((p) => postCard(p, { friends }))
+        : html`<div class="empty"><h3>No posts yet</h3><p>${g.joined ? "Start the conversation!" : "Join and start the conversation!"}</p></div>`}</div>`);
+    $("#gJoin")?.addEventListener("click", () => run($("#gJoin"), async () => { await api.joinGroup(g.id, true); toast(`Welcome to ${g.name}!`); route(); }));
+    $("#gLeave")?.addEventListener("click", () => run($("#gLeave"), async () => { await api.joinGroup(g.id, false); route(); }));
+    $("#gHide")?.addEventListener("click", () => run($("#gHide"), async () => { await api.setGroupHidden(g.id, !g.is_hidden); route(); }));
+    if (g.joined) bindComposer(() => route(), g.id);
+    bindPosts($("#posts"));
+  }
+  function pageGroupNew() {
+    setView(html`<a href="#/groups" class="btn ghost small">&larr; Groups</a>
+      <div class="page-head" style="margin-top:8px"><h1>Start a group</h1><p>A club for a taste, a style or a place. You can start up to 2.</p></div>
+      <form class="card" id="gForm">
+        <div class="row" style="gap:12px;align-items:flex-end"><div class="field" style="width:90px"><label for="gEmoji">Emoji</label><input id="gEmoji" maxlength="8" value="🫧"></div>
+          <div class="field grow"><label for="gName">Name</label><input id="gName" maxlength="60" required placeholder="e.g. Rose lovers"></div></div>
+        <div class="field"><label for="gDesc">What's it about?</label><textarea id="gDesc" rows="3" maxlength="500" placeholder="Who is this group for?"></textarea></div>
+        <button class="btn" id="gGo">Create group</button></form>`);
+    $("#gForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#gGo"), async () => { const id = await api.createGroup({ name: $("#gName").value, description: $("#gDesc").value, emoji: $("#gEmoji").value }); toast("Group created!"); go(`/group/${id}`); }); });
+  }
+
+  // ---------- Tracking numbers and claims (migration 033) ----------
+  const CLAIM_KIND = { not_arrived: "Didn't arrive", damaged: "Arrived damaged", not_as_described: "Not as described" };
+  function trackLink(t) {
+    const v = String(t || "").replace(/\s+/g, "");
+    if (/^1Z[0-9A-Z]{16}$/i.test(v)) return `https://www.ups.com/track?tracknum=${v}`;
+    if (/^(94|93|92|95)\d{18,20}$/.test(v) || /^[A-Z]{2}\d{9}US$/i.test(v)) return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${v}`;
+    if (/^\d{12}$|^\d{15}$/.test(v)) return `https://www.fedex.com/fedextrack/?trknbr=${v}`;
+    if (/^[A-Z]{2}\d{9}CA$/i.test(v) || /^\d{16}$/.test(v)) return `https://www.canadapost-postescanada.ca/track-reperage/en#/search?searchFor=${v}`;
+    return `https://www.google.com/search?q=${encodeURIComponent("track package " + t)}`;
+  }
+  async function mountShipping(s, info, on) {
+    const host = $("#shipHost"); if (!host) return;
+    const claims = await api.listClaims({ swapId: s.id });
+    const mine = info.iAmP ? s.proposer_tracking : s.recipient_tracking, theirs = info.iAmP ? s.recipient_tracking : s.proposer_tracking;
+    const giverOnly = info.gift && info.iAmP;
+    const waitedWeek = info.their.shipped && new Date(info.their.shipped) < Date.now() - 7 * 864e5;
+    const canClaim = !giverOnly && (info.their.shipped || info.my.received);
+    const myOpen = claims.find((c) => c.opened_by === state.uid && c.status === "open");
+    host.innerHTML = val(html`<div class="card"><h3>📦 Shipping</h3>
+      ${info.my.shipped && !(info.gift && !info.iAmP) ? html`<form class="row" id="trkForm" style="gap:8px"><label for="trkIn" class="visually-hidden">Your tracking number</label>
+        <input id="trkIn" class="grow" maxlength="60" value="${mine || ""}" placeholder="Your tracking number (optional)"><button class="btn small">${mine ? "Update" : "Add"}</button></form>
+        ${mine ? html`<p class="small muted" style="margin:6px 0 0">${on} can follow your package: <a href="${trackLink(mine)}" target="_blank" rel="noopener">${mine}</a></p>` : ""}` : ""}
+      ${theirs ? html`<p style="margin:10px 0 0">${on}'s tracking: <a href="${trackLink(theirs)}" target="_blank" rel="noopener"><b>${theirs}</b> ↗</a></p>`
+        : info.their.shipped ? html`<p class="small muted" style="margin:10px 0 0">${on} shipped ${fmtDate(info.their.shipped)} without a tracking number.</p>` : ""}
+      ${claims.map((c) => html`<div class="notice ${c.status === "open" ? "rose" : "ok"}" style="margin-top:12px"><b>${c.status === "open" ? "Claim open" : "Claim closed"}: ${CLAIM_KIND[c.kind]}</b>
+        <div class="small">${c.opened_by === state.uid ? "You opened it" : `${c.opener?.display_name || on} opened it`} ${fmtDate(c.created_at)}. ${c.status === "open" ? "An admin will look at it and talk to you both. Keep talking in the messages below." : html`<b>Resolution:</b> ${c.resolution || "(no note)"}`}</div>
+        ${c.status === "open" && c.opened_by === state.uid ? html`<button class="linklike small" data-withdraw="${c.id}">It's sorted, close my claim</button>` : ""}</div>`)}
+      ${canClaim && !myOpen ? html`<details class="claim-box" style="margin-top:12px"><summary class="small">Something went wrong?</summary>
+        <form id="claimForm" class="stack" style="margin-top:8px">
+          <label class="radio-card"><input type="radio" name="ck" value="not_arrived" ${info.my.received || !waitedWeek ? raw("disabled") : raw("checked")}><span><b>It didn't arrive</b><br><span class="small muted">${info.my.received ? "You marked it as received." : waitedWeek ? "It was shipped more than 7 days ago." : "Available 7 days after it was shipped. Most packages arrive within a week."}</span></span></label>
+          <label class="radio-card"><input type="radio" name="ck" value="damaged" ${info.my.received || !waitedWeek ? raw("checked") : ""}><span><b>It arrived damaged</b><br><span class="small muted">Leaked, broken or crushed.</span></span></label>
+          <label class="radio-card"><input type="radio" name="ck" value="not_as_described"><span><b>Not as described</b><br><span class="small muted">A different perfume, much less than listed, or not what was agreed.</span></span></label>
+          <textarea id="claimTxt" rows="3" maxlength="1000" placeholder="What happened? Photos help: you can send them in the messages below."></textarea>
+          <p class="hint" style="margin:0">${on} and the Swapfume admins are told. First, try sending ${on} a message: most problems are a delay or a mix-up.</p>
+          <button class="btn small secondary" id="claimGo">Open a claim</button></form></details>` : ""}
+    </div>`);
+    $("#trkForm")?.addEventListener("submit", (e) => { e.preventDefault(); run($("#trkForm button"), async () => { await api.setTracking(s.id, $("#trkIn").value); toast($("#trkIn").value.trim() ? `Saved. ${on} can follow it now.` : "Tracking number removed."); route(); }); });
+    $("#claimForm")?.addEventListener("submit", (e) => { e.preventDefault(); run($("#claimGo"), async () => { await api.openClaim(s.id, $("input[name=ck]:checked", host)?.value, $("#claimTxt").value); toast("Claim opened. An admin will be in touch."); route(); }); });
+    $$("[data-withdraw]", host).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.resolveClaim(b.dataset.withdraw, "Closed by the member who opened it: sorted out between them."); route(); })));
+  }
+
+  // ---------- Pass-arounds and giveaways (migration 029) ----------
+  const CIRCLE_KIND = { passaround: ["Pass-around", "teal"], giveaway: ["Giveaway", "rose"] };
+  function circleCard(c) {
+    const [label, tone] = CIRCLE_KIND[c.kind];
+    const open = c.status === "open" && (!c.ends_at || c.ends_at > new Date().toISOString());
+    const state_ = c.status === "running" ? "On its way" : c.status === "done" ? (c.kind === "giveaway" ? "Drawn" : "Back home") : c.status === "cancelled" ? "Cancelled" : open ? "Open" : "Closed";
+    const spots = c.kind === "passaround" ? `${c.count} of ${c.spots} spots` : `${c.spots} sample${c.spots > 1 ? "s" : ""} · ${c.count} entr${c.count === 1 ? "y" : "ies"}`;
+    return html`<a class="circle-card card" href="#/circle/${c.id}">
+      <span class="circle-art">${raw(val(bottleSvg(c.perfume, c.size)))}</span>
+      <span class="circle-body"><span class="row" style="gap:6px"><span class="pill ${tone}">${label}</span><span class="pill ${open ? "ok" : "grey"}">${state_}</span>${c.won ? html`<span class="pill gold">You won!</span>` : c.joined ? html`<span class="pill gold">You're in</span>` : ""}</span>
+        <b class="circle-title">${c.title}</b>
+        <span class="small muted">${pTitle(c.perfume)} · ${c.amount || ({ sample: "Sample", decant: "Decant", full: "Full bottle" })[c.size]}</span>
+        <span class="small muted">Hosted by ${c.host?.display_name || "a member"} · ${spots}${c.ends_at && open ? ` · closes ${fmtDate(c.ends_at)}` : ""}</span></span></a>`;
+  }
+  async function pageCircles(params) {
+    const tab = params?.get?.("tab") === "mine" ? "mine" : "open";
+    const all = await api.listCircles();
+    const list = tab === "mine" ? all.filter((c) => c.host_id === state.uid || c.joined) : all.filter((c) => c.status === "open" || c.status === "running");
+    setView(html`<div class="page-head"><div class="eyebrow">Generosity is the whole point</div><h1>Pass-arounds &amp; giveaways</h1>
+        <p>Try a bottle without buying it: join a <b>pass-around</b>, where one bottle travels from member to member and each person takes a little. Or enter a <b>giveaway</b> of free samples. No money, ever.</p></div>
+      ${communityTabs("circles")}
+      <div class="row" style="justify-content:space-between;margin:14px 0">
+        <div class="tabs" role="tablist"><a role="tab" class="tablink" href="#/circles" aria-selected="${tab === "open"}">Open now</a><a role="tab" class="tablink" href="#/circles?tab=mine" aria-selected="${tab === "mine"}">Mine</a></div>
+        <a class="btn" href="#/circle/new">Start one</a></div>
+      ${list.length ? html`<div class="circle-list">${list.map(circleCard)}</div>`
+        : html`<div class="empty"><h3>${tab === "mine" ? "Nothing yet" : "Nothing open right now"}</h3><p>Have a bottle you love? Send it on a pass-around, or give away a few samples to new members.</p><a class="btn secondary" href="#/circle/new">Start one</a></div>`}`);
+  }
+  async function pageCircleNew() {
+    let perfume = null;
+    const inWeek = new Date(Date.now() + 7 * 864e5); inWeek.setMinutes(0, 0, 0);
+    const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+    setView(html`<a href="#/circles" class="btn ghost small">&larr; Pass-arounds &amp; giveaways</a>
+      <div class="page-head" style="margin-top:8px"><h1>Start a pass-around or giveaway</h1></div>
+      <form class="card" id="cForm">
+        <fieldset class="choice"><legend>What kind?</legend>
+          <label class="radio-card"><input type="radio" name="kind" value="passaround" checked><span><b>Pass-around</b><br><span class="small muted">One bottle travels from member to member, then comes home to you. Each person takes a little into their own vial.</span></span></label>
+          <label class="radio-card"><input type="radio" name="kind" value="giveaway"><span><b>Giveaway</b><br><span class="small muted">Give free samples away. Members enter, Swapfume draws the winners, and you send each one a gift.</span></span></label>
+        </fieldset>
+        <div class="field"><label>Perfume</label><div id="cPick"></div><p class="hint" id="cPicked">Search the catalog.</p></div>
+        <div class="field"><label for="cTitle">Title</label><input id="cTitle" maxlength="100" required placeholder="e.g. Smoky woods pass-around"></div>
+        <div class="field"><label for="cDesc">Details <span class="muted">(optional)</span></label><textarea id="cDesc" rows="4" maxlength="1500" placeholder="How much to take, how quickly to send it on, how you'll pack it…"></textarea></div>
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <div class="field"><label for="cSize">What travels</label><select id="cSize"><option value="full">Full bottle</option><option value="decant">Decant</option><option value="sample">Sample</option></select></div>
+          <div class="field"><label for="cAmount" id="cAmountL">Each person takes</label><input id="cAmount" maxlength="60" value="up to 2 ml"></div>
+          <div class="field"><label for="cSpots" id="cSpotsL">How many people</label><input id="cSpots" type="number" min="2" max="20" value="6"></div>
+          <div class="field" id="cEndsF" hidden><label for="cEnds">Entries close</label><input id="cEnds" type="datetime-local" value="${local(inWeek)}"></div>
+        </div>
+        <p class="hint" id="cRule">Members need their shipping address saved to join. When you start, the route is fixed in joining order, and each person only ever sees the <b>next</b> person's address.</p>
+        <button class="btn" id="cGo">Publish</button>
+      </form>`);
+    perfumePicker($("#cPick"), (p) => { perfume = p; $("#cPicked").textContent = `Picked: ${pTitle(p)}`; if (!$("#cTitle").value) $("#cTitle").value = `${p.name} ${kind() === "giveaway" ? "giveaway" : "pass-around"}`; });
+    const kind = () => $("input[name=kind]:checked").value;
+    const sync = () => {
+      const g = kind() === "giveaway";
+      $("#cEndsF").hidden = !g; $("#cAmountL").textContent = g ? "Each winner gets" : "Each person takes";
+      $("#cSpotsL").textContent = g ? "How many samples" : "How many people";
+      $("#cSpots").min = g ? 1 : 2; $("#cSpots").max = g ? 50 : 20;
+      if (g && $("#cAmount").value === "up to 2 ml") $("#cAmount").value = "2 ml sample";
+      if (!g && $("#cAmount").value === "2 ml sample") $("#cAmount").value = "up to 2 ml";
+      if (g && $("#cSize").value === "full") $("#cSize").value = "sample";
+      $("#cRule").hidden = g;
+    };
+    $$("input[name=kind]").forEach((r) => r.addEventListener("change", sync));
+    $("#cForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      run($("#cGo"), async () => {
+        if (!perfume) throw new Error("Pick the perfume first.");
+        const id = await api.createCircle({ kind: kind(), title: $("#cTitle").value, description: $("#cDesc").value, perfumeId: perfume.id,
+          size: $("#cSize").value, amount: $("#cAmount").value, spots: $("#cSpots").value, endsAt: kind() === "giveaway" ? $("#cEnds").value : null });
+        toast("Published! 🫶"); go(`/circle/${id}`);
+      });
+    });
+  }
+  async function pageCircle(id) {
+    const c = await api.getCircle(id);
+    if (!c) return setView(html`<div class="empty"><h3>Not found</h3><a class="btn secondary" href="#/circles">Pass-arounds &amp; giveaways</a></div>`);
+    const host = c.host_id === state.uid, g = c.kind === "giveaway";
+    const people = c.members.filter((m) => m.user_id !== c.host_id);
+    const route_ = [...c.members].filter((m) => m.position != null).sort((a, b) => a.position - b.position);
+    const open = c.status === "open" && (!c.ends_at || c.ends_at > new Date().toISOString());
+    const holder = c.status === "running" ? c.members.find((m) => m.position === c.current_pos) : null;
+    const nextPos = route_.find((m) => m.position > (c.current_pos ?? 0))?.position ?? 0;
+    const nextUp = c.status === "running" ? c.members.find((m) => m.position === nextPos) : null;
+    const iHold = holder?.user_id === state.uid, iAmNext = nextUp?.user_id === state.uid && holder?.sent_at;
+    const [label, tone] = CIRCLE_KIND[c.kind];
+    setView(html`<a href="#/circles" class="btn ghost small">&larr; Pass-arounds &amp; giveaways</a>
+      <div class="page-head" style="margin-top:8px"><span class="pill ${tone}">${label}</span><h1>${c.title}</h1>
+        <p class="muted">${raw(val(html`<a href="#/perfume/${c.perfume?.id}">${pTitle(c.perfume)}</a>`))} · ${c.amount || ""} · hosted by <a href="#/u/${c.host_id}">${c.host?.display_name || "a member"}</a></p></div>
+      <div class="circle-layout">
+        <div class="card">
+          ${c.description ? html`<p style="white-space:pre-wrap;margin-top:0">${c.description}</p>` : ""}
+          ${c.status === "cancelled" ? html`<div class="notice">The host cancelled this.</div>` : ""}
+          ${g ? html`
+            <p>${c.spots} free sample${c.spots > 1 ? "s" : ""} · ${people.length} entr${people.length === 1 ? "y" : "ies"}${c.ends_at ? ` · ${open ? "entries close" : "closed"} ${fmtTime(c.ends_at)}` : ""}</p>
+            ${c.status === "done" ? html`<h3>Winners 🎁</h3><ul class="plain">${people.filter((m) => m.won).map((m) => html`<li>${avatar(m.user, "sm")} <a href="#/u/${m.user_id}">${m.user?.display_name}</a>${host ? html` · <a class="btn small" href="#/gift/${m.user_id}">Send their gift</a>` : ""}</li>`)}</ul>
+              ${c.me?.won ? html`<div class="notice ok">You won! ${c.host?.display_name} will send you a gift on Swapfume. Accept it when it arrives in Swaps.</div>` : ""}` : ""}
+            ${!host && open ? (c.me ? html`<p class="notice ok">You're entered. Good luck! 🍀</p><button class="btn ghost small" data-join="0">Withdraw my entry</button>` : html`<button class="btn" data-join="1">Enter the giveaway</button>`) : ""}
+            ${host && c.status === "open" ? html`<button class="btn" id="cDraw" ${people.length ? "" : raw("disabled")}>Draw ${c.spots} winner${c.spots > 1 ? "s" : ""} now</button>` : ""}`
+          : html`
+            <p>${people.length} of ${c.spots} spots taken${c.status === "running" ? " · on its way" : c.status === "done" ? " · back home 🏡" : ""}</p>
+            ${!host && open ? (c.me ? html`<p class="notice ok">You're on the list. The host starts it once enough people join.</p><button class="btn ghost small" data-join="0">Leave</button>`
+              : people.length < c.spots ? html`<button class="btn" data-join="1">Join the pass-around</button><p class="hint">You'll need your shipping address saved under Me.</p>` : html`<p class="notice">It's full.</p>`) : ""}
+            ${host && c.status === "open" ? html`<button class="btn" id="cStart" ${people.length ? "" : raw("disabled")}>Start it: fix the route</button><p class="hint">The route follows joining order and ends back with you.</p>` : ""}
+            ${iHold ? html`<div class="notice teal"><b>You have the bottle.</b> ${holder.sent_at ? "You marked it as sent." : html`Take ${c.amount || "your share"}, pack it well, and post it to the next person.`}
+              <div id="cAddr" class="addr"></div>${holder.sent_at ? "" : html`<button class="btn small" id="cSent">I've sent it</button>`}</div>` : ""}
+            ${iAmNext ? html`<div class="notice teal"><b>It's on its way to you!</b> <button class="btn small" id="cGot">It arrived</button></div>` : ""}`}
+          ${host && ["open", "running"].includes(c.status) ? html`<p style="margin-top:18px"><button class="linklike" id="cCancel">Cancel this ${g ? "giveaway" : "pass-around"}</button></p>` : ""}
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">${g ? "Entries" : c.status === "open" ? "Who's joining" : "The route"}</h3>
+          ${!g && route_.length ? html`<ol class="route">${route_.map((m) => html`<li class="${m.position === c.current_pos && c.status === "running" ? "here" : ""} ${m.received_at || m.position === 0 ? "done" : ""}">
+              ${avatar(m.user, "sm")} <a href="#/u/${m.user_id}">${m.user_id === state.uid ? "You" : m.user?.display_name}</a>${m.position === 0 ? html` <span class="small muted">(host)</span>` : ""}
+              ${m.position === c.current_pos && c.status === "running" ? html` <span class="pill teal">has it now</span>` : m.received_at ? html` <span class="small muted">✓ ${fmtDate(m.received_at)}</span>` : ""}</li>`)}
+              <li class="${c.status === "done" ? "done" : ""}">🏡 <span class="small muted">Back to ${c.host?.display_name}</span></li></ol>`
+          : people.length ? html`<ul class="plain">${people.map((m) => html`<li>${avatar(m.user, "sm")} <a href="#/u/${m.user_id}">${m.user_id === state.uid ? "You" : m.user?.display_name}</a>${m.won ? " 🎁" : ""}</li>`)}</ul>`
+          : html`<p class="muted">No one yet. Be the first!</p>`}
+        </div>
+      </div>`);
+    const act = (sel, fn, msg) => $(sel)?.addEventListener("click", () => run($(sel), async () => { await fn(); if (msg) toast(msg); route(); }));
+    $$("[data-join]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.joinCircle(c.id, b.dataset.join === "1"); toast(b.dataset.join === "1" ? (g ? "You're entered! 🍀" : "You're on the list!") : "Done."); route(); })));
+    act("#cStart", () => api.startPassaround(c.id), "Started! Everyone on the route was told.");
+    act("#cSent", () => api.circleSent(c.id), "Marked as sent. The next person was told.");
+    act("#cGot", () => api.circleReceived(c.id), "Enjoy! Take your share, then pass it on.");
+    act("#cDraw", async () => { const n = await api.drawGiveaway(c.id); toast(`${n} winner${n > 1 ? "s" : ""} drawn! Now send them their gifts.`); });
+    $("#cCancel")?.addEventListener("click", () => { if (confirm("Cancel this? Everyone who joined will be told.")) run(null, async () => { await api.cancelCircle(c.id); route(); }); });
+    if (iHold && !holder.sent_at && $("#cAddr")) api.circleNextAddress(c.id).then((a) => {
+      $("#cAddr").innerHTML = val(a ? html`<p class="small" style="margin:10px 0 6px">Send it to <b>${a.display_name}</b>:</p><pre class="addr-box">${a.full_name || ""}\n${a.address || "They haven't saved an address yet. Message them on Swapfume."}</pre>` : "");
+    }).catch(() => {});
+  }
+
   // ---------- Our mission ----------
   // Shown on the welcome page and as its own page (#/mission), in the founder's own voice.
   function missionBlock(full) {
@@ -1799,6 +2142,7 @@
             <button class="btn" id="revBtn">Post review</button></form>`}
           ${theirReview ? html`<hr class="soft"><div class="small muted">${on}'s review of you</div><p><span class="stars">${starsText(theirReview.rating)}</span> ${theirReview.comment}</p>` : ""}
           <p class="hint">Tip: update your collection — mark what you gave away, add what you received.</p></div>` : ""}
+        <div id="shipHost"></div>
         ${o ? html`<div class="card"><h3>${CHAT_ICON} Messages with ${on}</h3><div id="swapChat"><div class="spinner"></div></div></div>` : ""}
         <div><button class="btn ghost small" id="repSwap">Report a problem with this swap</button></div>
       </div>`);
@@ -1816,7 +2160,8 @@
     if (lr) lr.addEventListener("click", () => run(lr, async () => { await api.removeGiftLabel(s.id, s.label_path); toast("Label removed."); route(); }));
     bind("#decline", async () => { if (await confirmBox(gift ? "Decline this gift?" : "Decline this swap?", `${on} will see that you declined.`, "Decline")) { await api.respondSwap(s.id, false); route(); refreshSwapDot(); } });
     bind("#cancel", async () => { if (await confirmBox("Withdraw your proposal?", "You can always propose again later.", "Withdraw")) { await api.cancelSwap(s.id); route(); } });
-    bind("#ship", async () => { await api.markShipped(s.id); toast("Marked as shipped."); route(); refreshSwapDot(); });
+    bind("#ship", async () => { await api.markShipped(s.id); toast("Marked as shipped. Add a tracking number below if you have one."); route(); refreshSwapDot(); });
+    if (!meet && ["accepted", "completed"].includes(s.status)) mountShipping(s, info, on).catch(() => {});
     bind("#recv", async () => { await api.markReceived(s.id); toast("Lovely — enjoy!"); route(); refreshSwapDot(); });
     bind("#repSwap", async () => reportDialog({ targetUserId: o?.id, what: `your swap with ${on}` }));
     const rf = $("#revForm");
@@ -1855,6 +2200,7 @@
         ${myArea ? html`<div class="zip-preview"><div>${areaMap(myArea, p.city)}</div><p class="small muted">This is what members see on your profile: the general area, centred on a point blurred by several miles. Your ${C.postal} and exact location are never shown.</p></div>` : ""}</form>
       <div class="card"><h3>Emails</h3>
         <label class="switch"><input type="checkbox" id="emailNotif" ${p.email_notifications === false ? "" : raw("checked")}> Email me when someone sends me a swap proposal or a gift</label>
+        <label class="switch"><input type="checkbox" id="emailActivity" ${p.email_activity === false ? "" : raw("checked")}> Email me about new messages, comments, friend requests and swap updates I haven't seen (at most one email every 30 minutes)</label>
         <p class="hint" style="margin:6px 0 0">From hello@swapfume.com, one email per proposal. Account emails (like password resets) always come.</p></div>
       <div class="card"><div class="row">${p.is_admin ? html`<a class="btn secondary" href="#/admin">Admin tools</a>` : ""}<a class="btn secondary" href="#/request">Suggest a perfume</a></div></div>
       <div class="card"><h3>Blocked members</h3>
@@ -1874,6 +2220,7 @@
       if (moved) await api.setMyCountry(cc);
       state.profile = await api.updateProfile({ display_name: $("#pn").value, city: $("#pc").value, country: Util.country(cc).name, bio: $("#pb").value });
       toast("Profile saved."); if (moved) route(); }); });
+    $("#emailActivity")?.addEventListener("change", (e) => run(null, async () => { state.profile = await api.setEmailActivity(e.target.checked); toast(e.target.checked ? "You'll get an email about activity you haven't seen." : "Activity emails are off."); }));
     $("#emailNotif").addEventListener("change", (e) => run(null, async () => { state.profile = await api.setEmailNotifications(e.target.checked); toast(e.target.checked ? "You'll get an email for new proposals and gifts." : "Emails for new proposals and gifts are off."); }));
     $("#addrForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveAddr"), async () => { await api.saveMyAddress({ full_name: $("#an").value, address: $("#aa").value }); toast("Address saved."); }); });
     $("#zipForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#saveZip"), async () => { await api.setMyLocation($("#zipIn").value, C.code); toast(`${C.postal[0].toUpperCase() + C.postal.slice(1)} saved. Nearby swappers will show in your matches.`); route(); }); });
@@ -1959,7 +2306,7 @@
     if (!state.profile.is_admin) return setView(html`<div class="empty"><h3>Admins only</h3></div>`);
     const tab = params.get("tab") || "catalog";
     setView(html`<div class="page-head"><div class="eyebrow">Admin</div><h1>Moderation</h1></div>
-      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["dups", "Duplicates"], ["notes", "Notes corrections"], ["photos", "Photos"], ["import", "Import CSV"], ["reports", "Reports"], ["meetups", "Meetups"], ["waitlist", "Country waitlist"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
+      <div class="tabs" role="tablist">${[["catalog", "Catalog requests"], ["dups", "Duplicates"], ["notes", "Notes corrections"], ["photos", "Photos"], ["import", "Import CSV"], ["reports", "Reports"], ["meetups", "Meetups"], ["claims", "Claims"], ["waitlist", "Country waitlist"], ["members", "Members"]].map(([k, l]) => html`<button role="tab" data-t="${k}" aria-selected="${tab === k}">${l}</button>`)}</div><div id="ab"><div class="spinner"></div></div>`);
     $$("[data-t]").forEach((b) => b.addEventListener("click", () => go(`/admin?tab=${b.dataset.t}`)));
     const ab = $("#ab");
     if (tab === "catalog") {
@@ -1977,6 +2324,17 @@
         const p = rows.find((r) => r.id === Number(b.dataset.mq)), x = p.similar.find((s) => s.id === Number(b.dataset.into));
         mergeDialog(p, x, route);
       }));
+    } else if (tab === "claims") {
+      const rows = await api.listClaims();
+      ab.innerHTML = val(html`<p class="muted small">Packages that didn't arrive, arrived damaged or not as described. Read the swap and its messages, talk to both members, then close the claim with a note they'll both see.</p>
+        ${rows.length ? html`<ul class="list card">${rows.map((c) => html`<li><div class="row between" style="align-items:flex-start;gap:12px"><div class="grow">
+          <span class="pill ${c.status === "open" ? "rose" : "grey"}">${c.status === "open" ? "Open" : "Resolved"}</span> <b>${CLAIM_KIND[c.kind]}</b>
+          <div class="small muted">${c.opener?.display_name || "A member"} · swap <a href="#/swap/${c.swap_id}">#${c.swap_id}</a> between ${c.swap?.proposer?.display_name || "?"} and ${c.swap?.recipient?.display_name || "?"} · ${fmtDate(c.created_at)}</div>
+          ${c.details ? html`<p style="margin:6px 0 0">“${c.details}”</p>` : ""}
+          ${c.status === "resolved" ? html`<p class="small" style="margin:6px 0 0"><b>Resolution:</b> ${c.resolution || "(no note)"}</p>`
+            : html`<div class="row" style="gap:6px;margin-top:8px"><input class="grow" data-resnote="${c.id}" maxlength="1000" placeholder="What was decided (both members see this)"><button class="btn small" data-resolve="${c.id}">Close claim</button></div>`}
+          </div></div></li>`)}</ul>` : html`<div class="empty"><h3>No claims</h3><p>Nothing has gone missing. 🎉</p></div>`}`);
+      $$("[data-resolve]", ab).forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.resolveClaim(b.dataset.resolve, $(`[data-resnote="${b.dataset.resolve}"]`, ab).value); toast("Claim closed. Both members were told."); route(); })));
     } else if (tab === "meetups") {
       const [up, past] = await Promise.all([api.listEvents(), api.listEvents({ past: true })]);
       const rows = [...up, ...past];
@@ -2113,7 +2471,7 @@
   // ======================================================================
   function communityTabs(active) {
     const t = (key, href, label) => html`<a role="tab" class="tablink" href="${href}" aria-selected="${active === key}">${label}</a>`;
-    return html`<div class="tabs" role="tablist">${t("feed", "#/community", "Feed")}${t("discover", "#/discover", "Discover")}${t("friends", "#/friends", raw(`Friends<span class="dot" data-commdot hidden></span>`))}${t("meetups", "#/meetups", "Meetups")}</div>`;
+    return html`<div class="tabs" role="tablist">${t("feed", "#/community", "Feed")}${t("discover", "#/discover", "Discover")}${t("friends", "#/friends", raw(`Friends<span class="dot" data-commdot hidden></span>`))}${t("groups", "#/groups", "Groups")}${t("meetups", "#/meetups", "Meetups")}${t("circles", "#/circles", "Pass & give")}${t("saved", "#/saved", "Saved")}${t("search", "#/search", "🔍 Search")}</div>`;
   }
   const POST_KINDS = { sotd: ["Scent of the day", "rose"], discovery: ["New discovery", "teal"], haul: ["Haul", "gold"], question: ["Question", "ok"], thoughts: ["Thoughts", "grey"] };
   const HEART = raw(`<svg class="ico-inline heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>`);
@@ -2127,22 +2485,46 @@
     return fmtDate(d);
   }
   // friends: Map(userId -> "friends" | "sent" | "received"); shows "Add friend" next to strangers.
+  // "@Name" in posts and comments stands out (the database tells that person, when allowed).
+  function mentionText(t) {
+    const parts = String(t || "").split(/(@[A-Za-zÀ-ÿ][\w'-]{1,39})/g);
+    return parts.map((x, i) => (i % 2 ? html`<span class="mention">${x}</span>` : x));
+  }
+  function postPhotos(p) {
+    const all = [p.photo_url, ...(p.photos || [])].filter(Boolean);
+    if (!all.length) return "";
+    const who = p.author?.display_name || "a member";
+    if (all.length === 1) return html`<a class="post-photo" href="#/post/${p.id}"><img src="${all[0]}" alt="Photo shared by ${who}" loading="lazy"></a>`;
+    return html`<div class="post-photos n${all.length}">${all.map((u, i) => html`<a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="Photo ${i + 1} of ${all.length} shared by ${who}" loading="lazy"></a>`)}</div>`;
+  }
+  function pollBlock(p) {
+    const total = (p.poll_votes || []).reduce((a, b) => a + b, 0), voted = p.my_vote != null;
+    return html`<div class="poll" role="group" aria-label="Poll">${p.poll.map((o, i) => {
+      const n = p.poll_votes?.[i] || 0, pct = total ? Math.round((n / total) * 100) : 0;
+      return html`<button type="button" class="poll-opt ${p.my_vote === i ? "mine" : ""}" data-vote="${p.id}" data-choice="${i}" aria-pressed="${p.my_vote === i}">
+        ${voted ? html`<span class="poll-bar" style="width:${pct}%"></span>` : ""}<span class="poll-label">${o}</span>${voted ? html`<span class="poll-pct">${pct}%</span>` : ""}</button>`;
+    })}<p class="small muted" style="margin:4px 0 0">${total} vote${total === 1 ? "" : "s"}${voted ? " · tap another option to change your vote" : " · tap to vote"}</p></div>`;
+  }
   function postCard(p, { friends = null, full = false } = {}) {
     const a = p.author, mine = p.author_id === state.uid, [kindLabel, kindCls] = POST_KINDS[p.kind] || POST_KINDS.thoughts;
     const fs = friends && !mine ? friends.get(p.author_id) || "none" : null;
     return html`<article class="post card ${p.is_hidden ? "is-hidden" : ""}" data-post="${p.id}">
       <header class="post-head">${avatar(a)}<div class="grow"><a class="post-name" href="#/u/${p.author_id}">${a?.display_name || "Former member"}</a>
-        <div class="small muted"><time datetime="${p.created_at}" title="${fmtTime(p.created_at)}">${ago(p.created_at)}</time>${a?.city ? html` · ${a.city}` : ""}${fs === "friends" ? html` · <span class="friend-tag">Friend</span>` : ""}</div></div>
-        <span class="pill ${kindCls}">${kindLabel}</span></header>
+        <div class="small muted"><time datetime="${p.created_at}" title="${fmtTime(p.created_at)}">${ago(p.created_at)}</time>${p.edited_at ? html` · <span title="Edited ${fmtTime(p.edited_at)}">edited</span>` : ""}${a?.city ? html` · ${a.city}` : ""}${fs === "friends" ? html` · <span class="friend-tag">Friend</span>` : ""}${p.group ? html` · in <a href="#/group/${p.group.id}">${p.group.emoji} ${p.group.name}</a>` : ""}</div></div>
+        ${p.is_pinned ? html`<span class="pill gold">📌 Pinned</span>` : ""}<span class="pill ${kindCls}">${kindLabel}</span></header>
       ${p.is_hidden ? html`<div class="notice small">Hidden by an admin. Only you and the admins can see this post.</div>` : ""}
-      <p class="post-body">${full || p.body.length <= 320 ? p.body : html`${p.body.slice(0, 300).trimEnd()}… <a href="#/post/${p.id}">more</a>`}</p>
-      ${p.photo_url ? html`<a class="post-photo" href="#/post/${p.id}"><img src="${p.photo_url}" alt="Photo shared by ${a?.display_name || "a member"}" loading="lazy"></a>` : ""}
+      <p class="post-body" data-body="${p.id}">${full || p.body.length <= 320 ? mentionText(p.body) : html`${mentionText(p.body.slice(0, 300).trimEnd())}… <a href="#/post/${p.id}">more</a>`}</p>
+      ${postPhotos(p)}
+      ${p.poll ? pollBlock(p) : ""}
       ${p.perfume ? html`<a class="post-perfume" href="#/perfume/${p.perfume.id}" style="--tint:${tint(p.perfume)}"><span class="fam-dot" aria-hidden="true"></span><span><b>${p.perfume.name}</b> <span class="muted">${p.perfume.brand}</span></span></a>` : ""}
       <footer class="post-actions">
         <button type="button" class="post-act like ${p.liked ? "on" : ""}" data-like="${p.id}" aria-pressed="${p.liked ? "true" : "false"}" aria-label="${p.liked ? "Unlike" : "Like"} (${p.like_count} likes)">${HEART}<span data-likes>${p.like_count || ""}</span></button>
         <a class="post-act" href="#/post/${p.id}" aria-label="Comments (${p.comment_count})">${CHAT_ICON}<span>${p.comment_count || ""}</span></a>
         ${fs === "none" ? html`<button type="button" class="post-act add" data-addfriend="${p.author_id}">${ADD_FRIEND}<span>Add friend</span></button>` : fs === "sent" ? html`<span class="post-act small muted">Request sent</span>` : ""}
         <span class="grow"></span>
+        <button type="button" class="post-act small ${p.saved ? "on" : ""}" data-save="${p.id}" aria-pressed="${p.saved ? "true" : "false"}" title="Save for later">${p.saved ? "🔖 Saved" : "🔖 Save"}</button>
+        ${mine ? html`<button type="button" class="post-act small" data-editpost="${p.id}">Edit</button>` : ""}
+        ${state.profile?.is_admin ? html`<button type="button" class="post-act small" data-pin="${p.id}" data-on="${!p.is_pinned}">${p.is_pinned ? "Unpin" : "Pin"}</button>` : ""}
         ${mine || state.profile?.is_admin ? html`<button type="button" class="post-act small" data-delpost="${p.id}">Delete</button>` : ""}
         ${state.profile?.is_admin && !mine ? html`<button type="button" class="post-act small" data-hidepost="${p.id}" data-h="${!p.is_hidden}">${p.is_hidden ? "Unhide" : "Hide"}</button>` : ""}
         ${mine ? "" : html`<button type="button" class="post-act small" data-reppost="${p.id}" data-author="${p.author_id}">Report</button>`}
@@ -2166,14 +2548,36 @@
       const hide = e.target.closest("[data-hidepost]");
       if (hide) return run(hide, async () => { await api.setPostHidden(hide.dataset.hidepost, hide.dataset.h === "true"); toast(hide.dataset.h === "true" ? "Post hidden." : "Post visible again."); after(); });
       const rep = e.target.closest("[data-reppost]");
-      if (rep) reportDialog({ targetUserId: rep.dataset.author, targetPostId: rep.dataset.reppost, what: "this post" });
+      if (rep) return reportDialog({ targetUserId: rep.dataset.author, targetPostId: rep.dataset.reppost, what: "this post" });
+      const vote = e.target.closest("[data-vote]");
+      if (vote) return run(vote, async () => { await api.votePoll(vote.dataset.vote, vote.dataset.choice); after(); });
+      const sv = e.target.closest("[data-save]");
+      if (sv) {
+        const on = sv.getAttribute("aria-pressed") !== "true";
+        sv.setAttribute("aria-pressed", String(on)); sv.classList.toggle("on", on); sv.textContent = on ? "🔖 Saved" : "🔖 Save";
+        api.savePost(sv.dataset.save, on).then(() => toast(on ? "Saved. Find it under Community → Saved." : "Removed from Saved.")).catch((err) => toast(err.message, "error"));
+        return;
+      }
+      const pin = e.target.closest("[data-pin]");
+      if (pin) return run(pin, async () => { await api.pinPost(pin.dataset.pin, pin.dataset.on === "true"); toast(pin.dataset.on === "true" ? "Pinned to the top of Discover." : "Unpinned."); after(); });
+      const ed = e.target.closest("[data-editpost]");
+      if (ed) {
+        const bodyEl = $(`[data-body="${ed.dataset.editpost}"]`, root);
+        if (!bodyEl || bodyEl.querySelector("textarea")) return;
+        api.getPost(ed.dataset.editpost).then((full) => {
+          bodyEl.innerHTML = val(html`<textarea rows="4" maxlength="1000" class="edit-area">${full.body}</textarea><span class="row" style="gap:6px;margin-top:6px"><button type="button" class="btn small" data-saveedit>Save</button><button type="button" class="btn small ghost" data-canceledit>Cancel</button></span>`);
+          $("[data-canceledit]", bodyEl).addEventListener("click", () => after());
+          $("[data-saveedit]", bodyEl).addEventListener("click", (ev) => run(ev.currentTarget, async () => { await api.editPost(full.id, $("textarea", bodyEl).value); toast("Post updated."); after(); }));
+          $("textarea", bodyEl).focus();
+        }).catch((err) => toast(err.message, "error"));
+      }
     });
   }
   async function friendMap() {
     const rows = await api.listFriendships().catch(() => []);
     return new Map(rows.map((r) => [r.other_id, r.status]));
   }
-  function composer() {
+  function composer(group = null) {
     return html`<form class="card composer" id="composer">
       <div class="composer-top">${avatar(state.profile)}<label for="postBody" class="visually-hidden">Write a post</label>
         <textarea id="postBody" name="body" rows="2" maxlength="1000" required placeholder="What are you wearing today, ${state.profile?.display_name || ""}?"></textarea></div>
@@ -2181,11 +2585,13 @@
         <div class="seg kinds" role="radiogroup" aria-label="Kind of post">${Object.entries(POST_KINDS).map(([k, [l]], i) => html`<label><input type="radio" name="kind" value="${k}" class="visually-hidden" ${i === 0 ? raw("checked") : ""}>${l}</label>`)}</div>
         <div class="composer-perfume"><div id="postPerfumePick"></div><div id="postPerfume" class="row" hidden></div></div>
         ${photoPicker("photo", null)}
+        <div class="poll-edit" id="pollEdit" hidden><b class="small">Poll options</b>${[0, 1, 2, 3].map((i) => html`<input class="poll-in" maxlength="80" placeholder="Option ${i + 1}${i > 1 ? " (optional)" : ""}">`)}</div>
+        <button type="button" class="btn small ghost" id="pollToggle">📊 Add a poll</button>
         <p class="hint" id="postWarn" hidden>Keep it on Swapfume: don't share emails, phone numbers or payment apps. Swapfume never involves money.</p>
-        <div class="row between"><span class="small muted">Seen by members in ${myCountry().the}.</span><button class="btn" id="postSend">Post</button></div>
+        <div class="row between"><span class="small muted">${group ? html`Posting in ${group.emoji} ${group.name}` : html`Seen by members in ${myCountry().the}.`}</span><button class="btn" id="postSend">Post</button></div>
       </div></form>`;
   }
-  function bindComposer(done) {
+  function bindComposer(done, groupId = null) {
     const f = $("#composer"); if (!f) return;
     let perfume = null;
     const body = $("#postBody", f), more = $("#composerMore", f);
@@ -2200,11 +2606,20 @@
     };
     perfumePicker($("#postPerfumePick", f), (p) => { perfume = p; showPerfume(); }, { placeholder: "Tag a perfume (optional)" });
     bindPhotoPicker(more);
+    const pick = $(".photo-pick input[type=file]", f);
+    if (pick) {
+      pick.multiple = true; $("[data-pname]", f).textContent = "Up to 4. Take one or choose from your photos";
+      pick.addEventListener("change", () => { const n = Math.min(pick.files.length, 4); if (n > 1) { $("[data-ptitle]", f).textContent = `${n} photos added`; } });
+    }
+    $("#pollToggle", f).addEventListener("click", () => { const pe = $("#pollEdit", f); pe.hidden = !pe.hidden; $("#pollToggle", f).textContent = pe.hidden ? "📊 Add a poll" : "Remove the poll"; if (!pe.hidden) $(".poll-in", pe).focus(); });
     f.addEventListener("submit", (e) => {
       e.preventDefault();
       run($("#postSend", f), async () => {
         const fd = new FormData(f), photo = fd.get("photo");
-        await api.createPost({ kind: fd.get("kind"), body: body.value, perfumeId: perfume?.id, photoFile: photo && photo.size ? photo : null });
+        const files = pick ? [...pick.files].slice(0, 4) : (photo && photo.size ? [photo] : []);
+        const pollOn = !$("#pollEdit", f).hidden, poll = pollOn ? $$(".poll-in", f).map((x) => x.value.trim()).filter(Boolean) : null;
+        if (pollOn && poll.length < 2) throw new Error("A poll needs at least 2 options.");
+        await api.createPost({ kind: fd.get("kind"), body: body.value, perfumeId: perfume?.id, photoFile: files[0] || null, photoFiles: files.slice(1), groupId, poll });
         toast("Posted! ✨"); done();
       });
     });
@@ -2238,6 +2653,18 @@
     bindPosts($("#posts"));
   }
 
+  async function bindInviteCard() {
+    const box = $("#invLink"); if (!box) return;
+    const base = (window.APP_CONFIG.PUBLIC_SITE_URL || "https://swapfume.com/").replace(/\/?$/, "/");
+    const code = await api.myInviteCode().catch(() => null);
+    if (!code) { box.closest(".invite-card").hidden = true; return; }
+    const link = `${base}?invite=${code}`; box.value = link;
+    $("#invShare").addEventListener("click", async () => {
+      const text = `Join me on Swapfume, a little community for swapping perfume samples. No money, ever 💐`;
+      if (navigator.share) { try { await navigator.share({ title: "Swapfume", text, url: link }); return; } catch (e) { if (e.name === "AbortError") return; } }
+      try { await navigator.clipboard.writeText(link); toast("Link copied!"); } catch (e) { box.select(); toast("Copy the link above."); }
+    });
+  }
   async function pageFriends() {
     const rows = await api.listFriendships();
     const by = (s) => rows.filter((r) => r.status === s).sort((a, b) => (a.other.display_name || "").localeCompare(b.other.display_name || ""));
@@ -2245,6 +2672,8 @@
     const who = (r, actions) => html`<li class="friend-row">${avatar(r.other)}<div class="grow"><a href="#/u/${r.other_id}"><b>${r.other.display_name}</b></a><div class="small muted">${r.other.city || r.other.country || ""}</div></div><div class="row" style="gap:6px">${actions}</div></li>`;
     setView(html`<div class="page-head"><div class="eyebrow">Sharing is caring</div><h1>Friends</h1><p>Friends see each other's posts in their Feed. Only you can see your friends list.</p></div>
       ${communityTabs("friends")}
+      <div class="card invite-card"><div><h3 style="margin:0 0 4px">Invite a friend 💐</h3><p class="small muted" style="margin:0">Share your link. When they join, you'll be friends straight away.</p></div>
+        <div class="row" style="gap:8px;margin-top:10px"><input id="invLink" readonly aria-label="Your invite link" value="…" class="grow"><button class="btn small" id="invShare">Share</button></div></div>
       ${received.length ? html`<h2>Friend requests</h2><ul class="list card">${received.map((r) => who(r, html`<button class="btn small" data-accept="${r.other_id}">Accept</button><button class="btn small secondary" data-decline="${r.other_id}">Decline</button>`))}</ul>` : ""}
       <h2>Your friends ${friends.length ? html`<span class="muted small">(${friends.length})</span>` : ""}</h2>
       ${friends.length ? html`<ul class="list card">${friends.map((r) => who(r, html`<button class="btn small ghost" data-unfriend="${r.other_id}" data-name="${r.other.display_name}">Remove</button>`))}</ul>`
@@ -2255,6 +2684,7 @@
         <p class="small muted" style="margin-top:0">Type their full display name.</p>
         <div class="row" style="flex-wrap:nowrap"><input id="fmName" type="search" minlength="2" maxlength="40" required placeholder="Their display name" aria-label="Member's display name" style="flex:1"><button class="btn" id="fmGo">Find</button></div>
         <div id="fmOut" aria-live="polite"></div></form>`);
+    bindInviteCard();
     $$("[data-accept]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.respondFriendRequest(b.dataset.accept, true); toast("You're now friends! 🎉"); route(); refreshSwapDot(); })));
     $$("[data-decline]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.respondFriendRequest(b.dataset.decline, false); toast("Request declined. They aren't told."); route(); refreshSwapDot(); })));
     $$("[data-unfriend]").forEach((b) => b.addEventListener("click", async () => {
@@ -2275,19 +2705,29 @@
     const [p, friends] = await Promise.all([api.getPost(id), friendMap()]);
     if (!p) return setView(html`<div class="empty"><h3>Post not found</h3><p>It may have been deleted.</p><a class="btn secondary" href="#/community">Back to Community</a></div>`);
     const canDel = (c) => c.user_id === state.uid || p.author_id === state.uid || state.profile?.is_admin;
+    const commentLi = (c, reply = false) => html`<li class="${reply ? "reply" : ""}">${avatar(c.user)}<div class="grow"><div class="bubble"><a href="#/u/${c.user_id}"><b>${c.user?.display_name || "Former member"}</b></a> ${mentionText(c.body)}</div>
+          <div class="msg-meta">${ago(c.created_at)} · <button type="button" class="linklike" data-reply="${c.id}" data-name="${c.user?.display_name || ""}">Reply</button>${canDel(c) ? html` · <button type="button" class="linklike" data-delc="${c.id}">Delete</button>` : ""}${c.user_id !== state.uid ? html` · <button type="button" class="linklike" data-repc="${c.id}" data-u="${c.user_id}">Report</button>` : ""}</div></div></li>`;
     setView(html`<a href="#/community" class="btn ghost small">&larr; Community</a>
       <div class="post-list" id="posts" style="margin-top:8px">${postCard(p, { friends, full: true })}</div>
       <section class="card comments" aria-labelledby="cmH"><h2 id="cmH" style="margin-top:0">Comments</h2>
-        ${p.comments.length ? html`<ul class="comment-list">${p.comments.map((c) => html`<li>${avatar(c.user)}<div class="grow"><div class="bubble"><a href="#/u/${c.user_id}"><b>${c.user?.display_name || "Former member"}</b></a> ${c.body}</div>
-          <div class="msg-meta">${ago(c.created_at)}${canDel(c) ? html` · <button type="button" class="linklike" data-delc="${c.id}">Delete</button>` : ""}${c.user_id !== state.uid ? html` · <button type="button" class="linklike" data-repc="${c.id}" data-u="${c.user_id}">Report</button>` : ""}</div></div></li>`)}</ul>`
+        ${p.comments.length ? html`<ul class="comment-list">${p.comments.filter((c) => !c.parent_id).map((c) => html`${commentLi(c)}${p.comments.filter((r) => r.parent_id === c.id).map((r) => commentLi(r, true))}`)}</ul>`
           : html`<p class="muted small">No comments yet. Be the first!</p>`}
+        <p class="small" id="replyTo" hidden></p>
         <form class="chat-form" id="cmForm"><label for="cmIn" class="visually-hidden">Write a comment</label>
           <textarea id="cmIn" rows="1" maxlength="600" required placeholder="Write a comment…"></textarea><button class="btn" id="cmSend">Send</button></form>
         <p class="hint" id="cmWarn" hidden>Keep it on Swapfume: don't share emails, phone numbers or payment apps.</p></section>`);
     bindPosts($("#posts"), () => (location.hash === `#/post/${id}` ? route() : null));
     const inp = $("#cmIn");
     inp.addEventListener("input", () => { $("#cmWarn").hidden = !looksPrivate(inp.value); });
-    $("#cmForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#cmSend"), async () => { await api.commentPost(p.id, inp.value); route(); }); });
+    let replyTo = null;
+    $$("[data-reply]").forEach((b) => b.addEventListener("click", () => {
+      replyTo = b.dataset.reply; const rt = $("#replyTo");
+      rt.hidden = false; rt.innerHTML = val(html`Replying to <b>${b.dataset.name}</b> · <button type="button" class="linklike" id="noReply">Cancel</button>`);
+      $("#noReply").addEventListener("click", () => { replyTo = null; rt.hidden = true; });
+      if (b.dataset.name && !inp.value) inp.value = `@${b.dataset.name.split(" ")[0]} `;
+      inp.focus();
+    }));
+    $("#cmForm").addEventListener("submit", (e) => { e.preventDefault(); run($("#cmSend"), async () => { await api.commentPost(p.id, inp.value, replyTo); route(); }); });
     $$("[data-delc]").forEach((b) => b.addEventListener("click", () => run(b, async () => { await api.deletePostComment(b.dataset.delc); route(); })));
     $$("[data-repc]").forEach((b) => b.addEventListener("click", () => {
       const c = p.comments.find((x) => String(x.id) === b.dataset.repc);
@@ -2395,45 +2835,90 @@
   const CHAT_ICON = raw(`<svg class="ico-inline" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`);
   const fmtTime = (d) => new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const looksPrivate = (t) => /[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(t) || /(\+?\d[\d\s().-]{8,}\d)/.test(t) || /\b(venmo|paypal|zelle|cash ?app|revolut)\b/i.test(t);
+  function chatListHtml(t) {
+    const other = t.user_a === state.uid ? t.b : t.a, on = other?.display_name || "Former member";
+    if (!t.messages.length) return html`<p class="muted small" style="margin:0">No messages yet. Say hi! 👋</p>`;
+    const lastMine = [...t.messages].reverse().find((m) => m.sender_id === state.uid);
+    const lastIsMine = t.messages[t.messages.length - 1]?.sender_id === state.uid;
+    const seen = lastIsMine && lastMine && t.other_read_at && t.other_read_at >= lastMine.created_at;
+    return t.messages.map((m) => {
+      const mine = m.sender_id === state.uid;
+      return html`<div class="msg ${mine ? "me" : "them"}">
+        ${m.photo_url ? html`<a class="msg-photo" href="${m.photo_url}" target="_blank" rel="noopener"><img src="${m.photo_url}" alt="Photo from ${mine ? "you" : on}" loading="lazy"></a>` : ""}
+        ${m.body ? html`<div class="bubble">${m.body}</div>` : ""}
+        <div class="msg-meta">${mine ? "You" : on} · ${fmtTime(m.created_at)}${!mine && m.sender_id ? html` · <button type="button" class="linklike" data-repmsg="${m.id}">Report</button>` : ""}${mine && m === lastMine && seen ? html` · <span class="seen">Seen</span>` : ""}</div></div>`;
+    });
+  }
   function chatHtml(t) {
     const other = t.user_a === state.uid ? t.b : t.a;
     const on = other?.display_name || "Former member";
     return html`<div class="chat" data-thread="${t.id}">
-      <div class="chat-list" id="chatList" aria-live="polite">${t.messages.length ? t.messages.map((m) => {
-        const mine = m.sender_id === state.uid;
-        return html`<div class="msg ${mine ? "me" : "them"}"><div class="bubble">${m.body}</div><div class="msg-meta">${mine ? "You" : on} · ${fmtTime(m.created_at)}${!mine && m.sender_id ? html` · <button type="button" class="linklike" data-repmsg="${m.id}">Report</button>` : ""}</div></div>`;
-      }) : html`<p class="muted small" style="margin:0">No messages yet. Say hi! 👋</p>`}</div>
+      <div class="chat-list" id="chatList" aria-live="polite">${chatListHtml(t)}</div>
+      <p class="chat-typing" id="chatTyping" hidden>${on} is typing…</p>
+      <div class="chat-photo-preview" id="chatPhotoPrev" hidden><img alt=""><button type="button" class="linklike" id="chatPhotoX">Remove photo</button></div>
       <form class="chat-form" id="chatForm"><label for="chatIn" class="visually-hidden">Message to ${on}</label>
-        <textarea id="chatIn" rows="2" maxlength="1000" placeholder="Write to ${on}…" required></textarea>
+        <label class="btn secondary chat-photo-btn" title="Add a photo">${CAMERA}<span class="visually-hidden">Add a photo</span><input type="file" id="chatPhoto" accept="image/*" class="visually-hidden"></label>
+        <textarea id="chatIn" rows="2" maxlength="1000" placeholder="Write to ${on}…"></textarea>
         <button class="btn" id="chatSend">Send</button></form>
       <p class="hint" id="chatWarn" hidden>Keep it on Swapfume: don't share emails, phone numbers or payment apps. Swapfume never involves money.</p>
     </div>`;
   }
-  function bindChat(t, refresh) {
+  function bindReports(t) {
     const other = t.user_a === state.uid ? t.b : t.a, on = other?.display_name || "Former member";
-    const list = $("#chatList"); if (list) list.scrollTop = list.scrollHeight;
-    const inp = $("#chatIn"), warn = $("#chatWarn");
-    if (inp) inp.addEventListener("input", () => { warn.hidden = !looksPrivate(inp.value); });
-    if (inp) inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("#chatForm").requestSubmit(); });
-    const f = $("#chatForm");
-    if (f) f.addEventListener("submit", (e) => { e.preventDefault(); run($("#chatSend"), async () => { await api.sendMessage(t.id, inp.value); await refresh(); }); });
     $$("[data-repmsg]").forEach((b) => b.addEventListener("click", () => {
       const m = t.messages.find((x) => String(x.id) === b.dataset.repmsg);
-      reportDialog({ targetUserId: other?.id, what: `a message from ${on}`, prefill: `Message: “${(m?.body || "").slice(0, 600)}”\n\nWhat's wrong: ` });
+      reportDialog({ targetUserId: other?.id, what: `a message from ${on}`, prefill: `Message: “${(m?.body || "(photo)").slice(0, 600)}”\n\nWhat's wrong: ` });
     }));
+  }
+  function bindChat(t, { refresh, watcher }) {
+    const list = $("#chatList"); if (list) list.scrollTop = list.scrollHeight;
+    const inp = $("#chatIn"), warn = $("#chatWarn"), pick = $("#chatPhoto"), prev = $("#chatPhotoPrev");
+    let photo = null;
+    const showPhoto = (f) => {
+      photo = f; prev.hidden = !f;
+      if (f) { const r = new FileReader(); r.onload = () => { prev.querySelector("img").src = r.result; }; r.readAsDataURL(f); }
+      else { prev.querySelector("img").removeAttribute("src"); pick.value = ""; }
+    };
+    if (inp) inp.addEventListener("input", () => { warn.hidden = !looksPrivate(inp.value); watcher?.typing(); });
+    if (inp) inp.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("#chatForm").requestSubmit(); });
+    if (pick) pick.addEventListener("change", () => showPhoto(pick.files[0] || null));
+    $("#chatPhotoX")?.addEventListener("click", () => showPhoto(null));
+    const f = $("#chatForm");
+    if (f) f.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!inp.value.trim() && !photo) { inp.focus(); return; }
+      run($("#chatSend"), async () => { await api.sendMessage(t.id, inp.value, photo); inp.value = ""; showPhoto(null); warn.hidden = true; await refresh(); inp.focus(); });
+    });
+    bindReports(t);
     if (t.messages.some((m) => m.sender_id !== state.uid)) api.markThreadRead(t.id).then(refreshSwapDot).catch(() => {});
   }
-  // A chat inside a card, kept fresh while it's on screen.
+  // A chat inside a card. New messages, "Seen" and "typing…" arrive live (Supabase Realtime);
+  // a quiet check every 30 seconds covers the rest. Only the message list redraws, never the box you type in.
   async function mountChat(host, threadId) {
-    const draw = async () => {
-      const t = await api.getThread(threadId);
-      if (!t || !host.isConnected) return;
-      const typing = $("#chatIn")?.value || "";
-      host.innerHTML = val(chatHtml(t)); bindChat(t, draw);
-      if (typing) $("#chatIn").value = typing;
+    let t = await api.getThread(threadId);
+    if (!t || !host.isConnected) return;
+    let typingTimer = null;
+    const refresh = async () => {
+      const fresh = await api.getThread(threadId);
+      const list = $("#chatList", host);
+      if (!fresh || !list || !host.isConnected) return;
+      const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+      t = fresh; list.innerHTML = val(chatListHtml(t)); bindReports(t);
+      if (nearBottom) list.scrollTop = list.scrollHeight;
+      if (t.messages.some((m) => m.sender_id !== state.uid)) api.markThreadRead(t.id).then(refreshSwapDot).catch(() => {});
     };
-    await draw();
-    const timer = setInterval(() => { if (!host.isConnected) clearInterval(timer); else if (!document.hidden && document.activeElement?.id !== "chatIn") draw().catch(() => {}); }, 20000);
+    const watcher = api.watchThread(threadId, {
+      onMessage: () => { const ty = $("#chatTyping", host); if (ty) ty.hidden = true; refresh().catch(() => {}); },
+      onRead: (at) => { t.other_read_at = at; const list = $("#chatList", host); if (list) { list.innerHTML = val(chatListHtml(t)); bindReports(t); list.scrollTop = list.scrollHeight; } },
+      onTyping: () => { const ty = $("#chatTyping", host); if (!ty) return; ty.hidden = false; clearTimeout(typingTimer); typingTimer = setTimeout(() => { ty.hidden = true; }, 4000); }
+    });
+    host.innerHTML = val(chatHtml(t)); bindChat(t, { refresh, watcher });
+    const timer = setInterval(() => {
+      if (!host.isConnected) { clearInterval(timer); watcher.stop(); return; }
+      if (!document.hidden) refresh().catch(() => {});
+    }, 30000);
+    // Leaving the page: stop listening.
+    window.addEventListener("hashchange", function off() { if (!host.isConnected) { clearInterval(timer); watcher.stop(); window.removeEventListener("hashchange", off); } });
   }
 
   async function pageChat(id) {
@@ -2574,11 +3059,20 @@
     [/^\/messages$/, pageMessages, "swaps"],
     [/^\/chat\/(\d+)$/, pageChat, "swaps"],
     [/^\/me$/, pageMe, "me"],
+    [/^\/notifications$/, pageNotifications, "notifications"],
     [/^\/community$/, pageCommunity, "community"],
     [/^\/discover$/, pageDiscover, "community"],
     [/^\/friends$/, pageFriends, "community"],
     [/^\/post\/(\d+)$/, pagePost, "community"],
     [/^\/meetups$/, pageMeetups, "community"],
+    [/^\/circles$/, pageCircles, "community"],
+    [/^\/groups$/, pageGroups, "community"],
+    [/^\/saved$/, pageSaved, "community"],
+    [/^\/search$/, pageSearch, "community"],
+    [/^\/group\/new$/, () => pageGroupNew(), "community"],
+    [/^\/group\/(\d+)$/, pageGroup, "community"],
+    [/^\/circle\/new$/, () => pageCircleNew(), "community"],
+    [/^\/circle\/(\d+)$/, pageCircle, "community"],
     [/^\/meetup\/new$/, () => pageMeetupForm(null), "community"],
     [/^\/meetup\/(\d+)\/edit$/, (id) => pageMeetupForm(id), "community"],
     [/^\/meetup\/(\d+)$/, pageMeetup, "community"],
@@ -2640,6 +3134,12 @@
     }
     if (api.mode === "demo" && api.demoWasRefreshed()) toast("Demo data was refreshed for the bigger catalog.");
     if (state.uid && sessionStorage.getItem("swapfume_new")) { sessionStorage.removeItem("swapfume_new"); location.hash = "/"; }
+    watchNotifications(); notifCount = 0;
+    const inv = state.uid && state.profile?.adult_confirmed_at && pendingInvite();
+    if (inv) {
+      try { localStorage.removeItem("swapfume_invite"); } catch (e) { /* ignore */ }
+      api.claimInvite(inv).then((name) => { if (name) toast(`You and ${name} are now friends 💐`); }).catch(() => {});
+    }
     if (noRoute !== true) route();
   }
 

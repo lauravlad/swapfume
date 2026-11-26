@@ -58,6 +58,26 @@ Add `?demo=1` to any address (for example `https://swapfume.com/?demo=1`, or loc
 - **2026-11-07:** ZIP-code location (private), "Nearby · about X mi" within 20 miles, a full **Meet in person** swap option (no addresses, meeting plan, both confirm "met up"), many-for-one summary on proposals, Terms/Privacy updated. Database: migration 011 / `live-update/12_location_meetups.sql`. ZIP centre points: `js/data/zips.csv` from the U.S. Census Bureau 2024 Gazetteer (public domain).
 - **2026-11-07:** a small general-area map on profiles (OpenStreetMap tiles around a point blurred to 0.1°, no pin; preview under Me). Database: migration 012 / `live-update/13_area_map.sql`.
 
+- **2026-11-26:** the big social update (branch `social-features`), compared against Facebook swap groups:
+  - **Notifications:** a bell with an unread count and a Notifications page. Database triggers write them (messages, comments and replies, likes, @mentions, friend requests, swaps and gifts, reviews, meetups, pass-arounds, giveaways, invites, claims), so nothing depends on the app remembering. Emails about unseen activity through the `activity-email` Edge Function: at most one every 30 minutes, never for likes, with an on/off switch under Me. Migration 027.
+  - **Real-time chat:** new messages, "Seen" and "typing…" arrive instantly (Supabase Realtime), plus photos in messages. Migration 028.
+  - **Pass-arounds and sample giveaways** (Community → Pass & give): one bottle travels a fixed route and comes home; each holder sees only the next person's address. Giveaways draw winners at random, then the host sends gifts. Migration 029.
+  - **Interest groups:** eight starter groups plus member-made ones (up to 2 each), open across countries, each with its own feed. Migration 030.
+  - **Sign in with Google/Apple** (off until set up, see README) and **invite links** (friends on joining). Migration 031.
+  - **Richer posts:** up to 4 photos, polls, editing, replies to comments, @mentions, saved posts, admin-pinned posts, search for people and posts. Migration 032.
+  - **Tracking numbers and claims** ("didn't arrive" after 7 days, damaged, not as described), resolved by admins under Admin tools → Claims. Migration 033.
+  - **Romanian:** `js/i18n.js` translates the interface (footer: Română / English; Romanian phones get it by default). Members' own words are never translated. Sentences with names or numbers inside them are still English; add more lines to the dictionary in `js/i18n.js`.
+  - The `our mission` section on the welcome page and at `#/mission`.
+
+## Turning on the 2026-11-26 update (in this order)
+
+1. **Database first.** In the Supabase SQL Editor run `supabase/live-update/28_notifications.sql` through `34_tracking_claims.sql`, in number order. The current site keeps working with the new database (every changed function keeps its old arguments working), so this can happen before the code goes live. Tested on 2026-11-26 on a local Postgres 17 (Homebrew) with stand-ins for Supabase's auth, storage and Realtime: migrations 001–033 all run in order, the seven new files run a second time without harm, and 62 behaviour checks pass as pretend members (privacy of addresses, notifications and invite codes; blocks; who may draw, pin, edit or close a claim; timing rules). Supabase itself can still differ in small ways: if a file stops with an error, stop there and send the message.
+2. **Realtime:** the SQL adds the tables to Supabase Realtime. Check Database → Replication (or Publications) lists `notifications`, `messages` and `thread_reads` under `supabase_realtime`.
+3. **Activity emails:** deploy `supabase/functions/activity-email/index.ts` (Edge Functions → Via Editor, same as swap-email; it uses the same `RESEND_API_KEY` secret). Put the name Supabase gives it in `js/config.js` → `ACTIVITY_EMAIL_FUNCTION`. Until then everything works except those emails.
+4. **Then push the code** (merge `social-features` into `main`).
+5. Optional, later: Google/Apple sign-in (README → "Sign in with Google/Apple"), and have a Romanian speaker read through `js/i18n.js`.
+6. iPhone app: `www/` (the copy bundled into the app) is older than the website; refresh it before the next iPhone build.
+
 ## Still to do
 
 1. Supabase → Authentication → URL Configuration: Site URL `https://swapfume.com`; Redirect URLs `https://swapfume.com/**` and `https://www.swapfume.com/**` (confirm this was done).

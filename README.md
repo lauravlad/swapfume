@@ -148,6 +148,15 @@ To check the DNS addresses yourself, GitHub's help page "Managing a custom domai
 
 I tested these rules on a local copy of Postgres (the same database Supabase uses), going through the full swap, the permission checks, duplicate catalog requests and bans. For 005 and 006, I also tested both a database that already had the old catalog and a fresh install. The result was the same catalog with no duplicates. A pre-2000 perfume someone had on their wishlist was kept rather than deleted. For 009 and the split `live-update/` files, I tested a fresh install (001–004 + live-update), the full migrations + seed, and an older database run through live-update twice: all three end with the same 2,758 perfumes, 114 classics, 362 with perfumers, and no duplicates; a pre-2000 perfume that someone had wishlisted was kept. Reviews: one per member, tags checked, Helpful counts can't be faked, admin hide and bans update the average, blocked/banned authors hidden, deleted member → "Former member". CSV import: preview and commit, duplicates within the file, existing perfumes, pre-2000 rows, missing brand, bad year, unknown family. For 008, I tested: under-18 sign-up refused, age confirmation, blocking in both directions (including admins), proposals refused and withdrawn, deletion refused during a swap in progress, and after deletion the swap and the review the member wrote kept with "Former member" while everything else was gone. The Edge Function itself can only run on Supabase, so it's untested until you deploy it. I have not yet run any of this on a real Supabase project.
 
+### Sign in with Google/Apple
+
+The buttons stay hidden until you switch a provider on, so nobody sees a broken one.
+
+1. **Google:** in Google Cloud Console create an OAuth client ID (type *Web application*), with the authorized redirect URI that Supabase shows under **Authentication → Providers → Google**. Paste the client ID and secret there and turn Google on.
+2. **Apple:** needs the Apple Developer Program. In Supabase, **Authentication → Providers → Apple**, follow the steps it lists (Services ID, key, team ID). Apple requires *Sign in with Apple* in the iPhone app if the app offers Google sign-in.
+3. In `js/config.js`, set `OAUTH_PROVIDERS: ["google"]` (or `["google", "apple"]`).
+4. People who join this way have no birth date yet, so they land on the "Please confirm your age" screen (with a country picker) before anything else. The 18+ rule still holds.
+
 ## iPhone app (App Store)
 
 The iPhone app is the same Swapfume, wrapped in a small native shell with **Capacitor** (folder `ios/`). It talks to the same Supabase database, so web and app members are the same community.

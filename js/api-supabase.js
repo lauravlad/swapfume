@@ -38,7 +38,7 @@
       return sb.storage.from("bottle-photos").getPublicUrl(path).data.publicUrl;
     }
 
-    return {
+    const api = {
       mode: "supabase",
       async init() {
         const { data } = await sb.auth.getSession();
@@ -62,6 +62,16 @@
         }));
         return { needsConfirmation: !data.session };
       },
+      // "Continue with Google / Apple" (switch each one on in Supabase → Authentication → Providers,
+      // then list it in APP_CONFIG.OAUTH_PROVIDERS). The 18+ check happens on the next screen.
+      async signInWithProvider(provider) {
+        const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo: siteUrl() } });
+        if (error) fail(error.message);
+      },
+      // ---- Invite links (migration 031) ----
+      async myInviteCode() { return check(await sb.rpc("my_invite_code")); },
+      async invitePreview(code) { try { return check(await sb.rpc("invite_preview", { p_code: String(code || "") })); } catch (e) { return null; } },
+      async claimInvite(code) { return check(await sb.rpc("claim_invite", { p_code: String(code || "") })); },
       async signIn({ email, password }) {
         const { error } = await sb.auth.signInWithPassword({ email: String(email).trim(), password });
         if (error) fail(/confirm/i.test(error.message) ? "Please confirm your email first (check your inbox). Link expired? Tap \"Resend confirmation email\" below." : "Email or password is not right.");
@@ -154,6 +164,55 @@
       },
       async setEmailNotifications(on) {
         return check(await sb.from("profiles").update({ email_notifications: !!on }).eq("id", me()).select().single());
+      },
+      // ---- Pass-arounds and giveaways (migration 029) ----
+      async listCircles({ mine = false } = {}) {
+        const v = me();
+        let q = sb.from("circles").select(`*, host:profiles!circles_host_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,image_url,member_photo_url), members:circle_members(user_id,won)`)
+          .order("created_at", { ascending: false }).limit(60);
+        if (mine) q = q.or(`host_id.eq.${v}`);
+        const rows = check(await q);
+        return rows.map((c) => ({ ...c, count: c.members.filter((m) => m.user_id !== c.host_id).length, joined: c.members.some((m) => m.user_id === v), won: c.members.some((m) => m.user_id === v && m.won) }));
+      },
+      async getCircle(id) {
+        const v = me();
+        const c = check(await sb.from("circles").select(`*, host:profiles!circles_host_id_fkey(${LITE}), perfume:perfumes(*)`).eq("id", Number(id)).maybeSingle());
+        if (!c) return null;
+        c.members = check(await sb.from("circle_members").select(`*, user:profiles!circle_members_user_id_fkey(${LITE})`).eq("circle_id", c.id).order("joined_at"));
+        c.me = c.members.find((m) => m.user_id === v) || null;
+        return c;
+      },
+      async createCircle({ kind, title, description, perfumeId, size, amount, spots, endsAt }) {
+        return check(await sb.rpc("create_circle", { p_kind: kind, p_title: title, p_description: description || "", p_perfume: Number(perfumeId),
+          p_size: size || "sample", p_amount: amount || "", p_spots: Number(spots), p_ends_at: endsAt ? new Date(endsAt).toISOString() : null }));
+      },
+      async joinCircle(id, going) { check(await sb.rpc("join_circle", { p_circle: Number(id), p_going: !!going })); },
+      async startPassaround(id) { check(await sb.rpc("start_passaround", { p_circle: Number(id) })); },
+      async circleNextAddress(id) { return (check(await sb.rpc("circle_next_address", { p_circle: Number(id) })) || [])[0] || null; },
+      async circleSent(id) { check(await sb.rpc("circle_sent", { p_circle: Number(id) })); },
+      async circleReceived(id) { check(await sb.rpc("circle_received", { p_circle: Number(id) })); },
+      async drawGiveaway(id) { return check(await sb.rpc("draw_giveaway", { p_circle: Number(id) })); },
+      async cancelCircle(id) { check(await sb.rpc("cancel_circle", { p_circle: Number(id) })); },
+      async setCircleHidden(id, hidden) { check(await sb.rpc("admin_set_circle_hidden", { p_circle: Number(id), p_hidden: !!hidden })); },
+      // ---- Notifications (migration 027): written by database triggers, read here ----
+      async listNotifications({ limit = 60 } = {}) {
+        me();
+        return check(await sb.from("notifications").select(`*, actor:profiles!notifications_actor_id_fkey(${LITE}), post:posts(id,body,kind), event:events(id,title), swap:swaps(id,is_gift), circle:circles(id,title,kind)`)
+          .order("created_at", { ascending: false }).limit(limit));
+      },
+      async unreadNotifications() { if (!uid) return 0; try { return check(await sb.rpc("unread_notifications")) || 0; } catch (e) { return 0; } },
+      async markNotificationsRead(id = null) { check(await sb.rpc("mark_notifications_read", { p_id: id == null ? null : Number(id) })); },
+      async deleteNotification(id) { check(await sb.from("notifications").delete().eq("id", Number(id))); },
+      async setEmailActivity(on) {
+        return check(await sb.from("profiles").update({ email_activity: !!on }).eq("id", me()).select().single());
+      },
+      // Calls back whenever a new notification arrives for me (Supabase Realtime). Returns a stop function.
+      onNotification(cb) {
+        if (!uid) return () => {};
+        const ch = sb.channel(`notif-${uid}`)
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` }, (p) => cb(p.new))
+          .subscribe();
+        return () => { sb.removeChannel(ch); };
       },
       // "Take a photo": the identify-perfumes Edge Function asks the AI which perfumes are in the picture.
       async identifyPerfumes(file) {
@@ -255,13 +314,38 @@
       // ---- Messages (migration 020): only between the two people in a swap, or about a listing ----
       async swapThread(swapId) { return check(await sb.rpc("swap_thread", { p_swap: Number(swapId) })); },
       async itemThread(itemId) { return check(await sb.rpc("item_thread", { p_item: Number(itemId) })); },
-      async sendMessage(threadId, body) { return check(await sb.rpc("send_message", { p_thread: Number(threadId), p_body: String(body || "") })); },
+      async sendMessage(threadId, body, photoFile = null) {
+        const photo = photoFile ? await uploadPhoto(photoFile) : null;
+        return check(await sb.rpc("send_message", { p_thread: Number(threadId), p_body: String(body || ""), p_photo_url: photo }));
+      },
+      // Live updates for one conversation: new messages, the other person's "read up to" time,
+      // and "typing…" (a Realtime broadcast, nothing stored). Returns { stop, typing }.
+      watchThread(threadId, { onMessage, onRead, onTyping } = {}) {
+        if (!uid) return { stop() {}, typing() {} };
+        const id = Number(threadId);
+        const ch = sb.channel(`thread-${id}`, { config: { broadcast: { self: false } } })
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `thread_id=eq.${id}` }, (p) => onMessage?.(p.new))
+          .on("postgres_changes", { event: "*", schema: "public", table: "thread_reads", filter: `thread_id=eq.${id}` }, (p) => { if (p.new?.user_id && p.new.user_id !== uid) onRead?.(p.new.last_read_at); })
+          .on("broadcast", { event: "typing" }, (p) => { if (p.payload?.user !== uid) onTyping?.(); })
+          .subscribe();
+        let last = 0;
+        return {
+          stop() { sb.removeChannel(ch); },
+          typing() { const n = Date.now(); if (n - last > 2500) { last = n; ch.send({ type: "broadcast", event: "typing", payload: { user: uid } }).catch(() => {}); } }
+        };
+      },
       async markThreadRead(threadId) { check(await sb.rpc("mark_thread_read", { p_thread: Number(threadId) })); },
       async unreadThreads() { if (!uid) return 0; return check(await sb.rpc("unread_threads")) || 0; },
       async getThread(id) {
         const t = check(await sb.from("threads").select(`*, a:profiles!threads_user_a_fkey(${LITE}), b:profiles!threads_user_b_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration), swap:swaps(id,is_gift,status)`).eq("id", id).maybeSingle());
         if (!t) return null;
-        t.messages = check(await sb.from("messages").select("*").eq("thread_id", id).order("created_at").limit(500));
+        const [msgs, reads] = await Promise.all([
+          sb.from("messages").select("*").eq("thread_id", id).order("created_at").limit(500),
+          sb.from("thread_reads").select("user_id, last_read_at").eq("thread_id", id)
+        ]);
+        t.messages = check(msgs);
+        // "Seen": when the other person last read this conversation (older databases: unknown).
+        t.other_read_at = (reads.data || []).find((r) => r.user_id !== uid)?.last_read_at || null;
         return t;
       },
       async listThreads() {
@@ -309,6 +393,17 @@
       async cancelSwap(id) { check(await sb.rpc("cancel_swap", { p_swap: Number(id) })); },
       async markShipped(id) { check(await sb.rpc("mark_shipped", { p_swap: Number(id) })); },
       async markReceived(id) { check(await sb.rpc("mark_received", { p_swap: Number(id) })); },
+      // ---- Tracking numbers and claims (migration 033) ----
+      async setTracking(id, tracking) { check(await sb.rpc("set_tracking", { p_swap: Number(id), p_tracking: String(tracking || "") })); },
+      async listClaims({ swapId = null, open = false } = {}) {
+        me();
+        let q = sb.from("swap_claims").select(`*, opener:profiles!swap_claims_opened_by_fkey(${LITE}), swap:swaps(id, proposer_id, recipient_id, is_gift, proposer_tracking, recipient_tracking, proposer_shipped_at, recipient_shipped_at, proposer:profiles!swaps_proposer_id_fkey(${LITE}), recipient:profiles!swaps_recipient_id_fkey(${LITE}))`).order("created_at", { ascending: false });
+        if (swapId) q = q.eq("swap_id", Number(swapId));
+        if (open) q = q.eq("status", "open");
+        try { return check(await q.limit(100)); } catch (e) { return []; }
+      },
+      async openClaim(id, kind, details) { return check(await sb.rpc("open_claim", { p_swap: Number(id), p_kind: kind, p_details: String(details || "") })); },
+      async resolveClaim(id, resolution) { check(await sb.rpc("resolve_claim", { p_claim: Number(id), p_resolution: String(resolution || "") })); },
 
       async listReviews({ revieweeId, reviewerId, swapId } = {}) {
         let q = sb.from("reviews").select("*, reviewer:profiles!reviews_reviewer_id_fkey(id,display_name,avatar_url)");
@@ -500,33 +595,92 @@
 
       // ---- Community: posts ----
       // scope: "feed" (me + friends), "discover" (my country), or authorId (one member's posts).
-      async listPosts({ scope = "discover", authorId, limit = 40 } = {}) {
+      async listPosts({ scope = "discover", authorId, groupId, limit = 40 } = {}) {
         const v = me();
-        let q = sb.from("posts").select(`*, author:profiles!posts_author_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,family), likes:post_likes(user_id), comments:post_comments(count)`);
-        if (authorId) q = q.eq("author_id", authorId);
+        let q = sb.from("posts").select(`*, author:profiles!posts_author_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,family), likes:post_likes(user_id), comments:post_comments(count), group:groups(id,name,emoji)`);
+        if (groupId) q = q.eq("group_id", Number(groupId));
+        else if (authorId) q = q.eq("author_id", authorId);
         else if (scope === "feed") {
           const fr = (await this.listFriendships()).filter((f) => f.status === "friends").map((f) => f.other_id);
-          q = q.in("author_id", [v, ...fr]);
+          q = q.in("author_id", [v, ...fr]).is("group_id", null);
         } else {
-          const p = await this.getProfile(v); q = q.eq("country_code", p?.country_code || "US");
+          const p = await this.getProfile(v); q = q.eq("country_code", p?.country_code || "US").is("group_id", null);
         }
+        if (!authorId && !groupId && scope !== "feed") q = q.order("is_pinned", { ascending: false });
         const rows = check(await q.order("created_at", { ascending: false }).limit(limit));
-        return rows.filter((r) => !r.author?.is_banned).map((r) => ({ ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments?.[0]?.count || 0 }));
+        const out = rows.filter((r) => !r.author?.is_banned).map((r) => ({ ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments?.[0]?.count || 0 }));
+        return this._withExtras(out);
+      },
+      // Poll totals and "saved" for a list of posts (migration 032; skipped quietly on older databases).
+      async _withExtras(posts) {
+        if (!posts.length) return posts;
+        const ids = posts.map((p) => p.id), polls = posts.filter((p) => p.poll).map((p) => p.id);
+        const [pc, sv] = await Promise.all([
+          polls.length ? sb.rpc("poll_counts", { p_posts: polls }) : { data: [] },
+          sb.from("saved_posts").select("post_id").in("post_id", ids)
+        ]);
+        const saved = new Set((sv.data || []).map((r) => r.post_id));
+        posts.forEach((p) => {
+          p.saved = saved.has(p.id);
+          if (p.poll) {
+            const rows = (pc.data || []).filter((r) => r.post_id === p.id);
+            p.poll_votes = p.poll.map((_, i) => Number(rows.find((r) => r.choice === i)?.votes || 0));
+            p.my_vote = rows.find((r) => r.mine)?.choice ?? null;
+          }
+        });
+        return posts;
       },
       async getPost(id) {
         const v = me();
         const r = check(await sb.from("posts").select(`*, author:profiles!posts_author_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,family), likes:post_likes(user_id)`).eq("id", Number(id)).maybeSingle());
         if (!r) return null;
         r.comments = check(await sb.from("post_comments").select(`*, user:profiles!post_comments_user_id_fkey(${LITE})`).eq("post_id", r.id).order("created_at"));
-        return { ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments.length };
+        const [full] = await this._withExtras([{ ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments.length }]);
+        return full;
       },
-      async createPost({ kind, body, perfumeId, photoFile }) {
-        const photo_url = photoFile ? await uploadPhoto(photoFile) : null;
-        return check(await sb.rpc("create_post", { p_kind: kind, p_body: body, p_perfume: perfumeId ? Number(perfumeId) : null, p_photo_url: photo_url }));
+      async createPost({ kind, body, perfumeId, photoFile, photoFiles = [], groupId = null, poll = null }) {
+        const files = [photoFile, ...photoFiles].filter(Boolean).slice(0, 4);
+        const urls = [];
+        for (const f of files) urls.push(await uploadPhoto(f));
+        return check(await sb.rpc("create_post", { p_kind: kind, p_body: body, p_perfume: perfumeId ? Number(perfumeId) : null, p_photo_url: urls[0] || null,
+          p_group: groupId ? Number(groupId) : null, p_photos: urls.slice(1), p_poll: poll && poll.length ? poll : null }));
       },
+      async editPost(id, body) { check(await sb.rpc("edit_post", { p_post: Number(id), p_body: body })); },
+      async pinPost(id, on) { check(await sb.rpc("pin_post", { p_post: Number(id), p_on: !!on })); },
+      async votePoll(id, choice) { check(await sb.rpc("vote_poll", { p_post: Number(id), p_choice: Number(choice) })); },
+      async savePost(id, on) {
+        if (on) check(await sb.from("saved_posts").upsert({ user_id: me(), post_id: Number(id) }));
+        else check(await sb.from("saved_posts").delete().eq("user_id", me()).eq("post_id", Number(id)));
+      },
+      async listSavedPosts() {
+        const v = me();
+        const ids = (check(await sb.from("saved_posts").select("post_id, created_at").eq("user_id", v).order("created_at", { ascending: false }).limit(100)) || []).map((r) => r.post_id);
+        if (!ids.length) return [];
+        const rows = check(await sb.from("posts").select(`*, author:profiles!posts_author_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,family), likes:post_likes(user_id), comments:post_comments(count), group:groups(id,name,emoji)`).in("id", ids));
+        const out = ids.map((id) => rows.find((r) => r.id === id)).filter(Boolean).map((r) => ({ ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments?.[0]?.count || 0 }));
+        return this._withExtras(out);
+      },
+      async searchPeople(q) { return check(await sb.rpc("search_people", { p_q: String(q || "") })) || []; },
+      async searchPosts(q) {
+        const v = me(), t = cleanQ(q);
+        if (t.length < 2) return [];
+        const rows = check(await sb.from("posts").select(`*, author:profiles!posts_author_id_fkey(${LITE}), perfume:perfumes(id,brand,name,concentration,family), likes:post_likes(user_id), comments:post_comments(count), group:groups(id,name,emoji)`)
+          .ilike("body", `%${t}%`).order("created_at", { ascending: false }).limit(30));
+        return this._withExtras(rows.filter((r) => !r.author?.is_banned).map((r) => ({ ...r, like_count: r.likes.length, liked: r.likes.some((l) => l.user_id === v), comment_count: r.comments?.[0]?.count || 0 })));
+      },
+      // ---- Groups (migration 030) ----
+      async listGroups() {
+        const v = me();
+        const rows = check(await sb.from("groups").select("*, members:group_members(user_id, role)").order("is_official", { ascending: false }).order("name"));
+        return rows.map((g) => ({ ...g, member_count: g.members.length, joined: g.members.some((m) => m.user_id === v), role: g.members.find((m) => m.user_id === v)?.role || null }));
+      },
+      async getGroup(id) { return (await this.listGroups()).find((g) => g.id === Number(id)) || null; },
+      async joinGroup(id, join) { check(await sb.rpc("join_group", { p_group: Number(id), p_join: !!join })); },
+      async createGroup({ name, description, emoji }) { return check(await sb.rpc("create_group", { p_name: name, p_description: description || "", p_emoji: emoji || "" })); },
+      async setGroupHidden(id, hidden) { check(await sb.rpc("admin_set_group_hidden", { p_group: Number(id), p_hidden: !!hidden })); },
       async deletePost(id) { check(await sb.from("posts").delete().eq("id", Number(id))); },
       async likePost(id, on) { check(await sb.rpc("like_post", { p_post: Number(id), p_on: !!on })); },
-      async commentPost(id, body) { check(await sb.rpc("comment_post", { p_post: Number(id), p_body: body })); },
+      async commentPost(id, body, parentId = null) { check(await sb.rpc("comment_post", { p_post: Number(id), p_body: body, p_parent: parentId ? Number(parentId) : null })); },
       async deletePostComment(id) { check(await sb.from("post_comments").delete().eq("id", Number(id))); },
       async setPostHidden(id, hidden) { check(await sb.rpc("admin_set_post_hidden", { p_post: Number(id), p_hidden: !!hidden })); },
       async trendingWishes() {
@@ -536,5 +690,22 @@
         return rows.map((r) => ({ perfume: ps.find((p) => p.id === r.perfume_id), wanted: Number(r.wanted) })).filter((r) => r.perfume);
       }
     };
+    // After anything that notifies someone else, ask the activity-email function to email them
+    // (it decides who, if anyone; at most one email per member every 30 minutes). A few seconds'
+    // wait gathers several quick actions into one call. Never blocks or fails the action itself.
+    let emailTimer = null;
+    const nudgeEmails = () => {
+      const fn = window.APP_CONFIG.ACTIVITY_EMAIL_FUNCTION;
+      if (!fn || !uid) return;
+      clearTimeout(emailTimer);
+      emailTimer = setTimeout(() => { sb.functions.invoke(fn, { method: "POST", body: {} }).catch(() => {}); }, 4000);
+    };
+    ["sendMessage", "commentPost", "sendFriendRequest", "respondFriendRequest", "respondSwap", "cancelSwap", "markShipped",
+     "markReceived", "leaveReview", "joinEvent", "commentEvent", "cancelEvent", "openClaim", "resolveClaim",
+     "joinCircle", "startPassaround", "circleSent", "circleReceived", "drawGiveaway", "cancelCircle"].forEach((k) => {
+      const f = api[k];
+      if (f) api[k] = async function (...a) { const r = await f.apply(this, a); nudgeEmails(); return r; };
+    });
+    return api;
   };
 })();

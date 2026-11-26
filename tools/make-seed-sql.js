@@ -180,6 +180,13 @@ parts.push(['community', head('023 community: friends, posts, likes and comments
 parts.push(['perfume_photos', head('024 every member photo of a perfume is kept under that perfume', 'Same as supabase/migrations/024_perfume_photos.sql.') + mig('024_perfume_photos.sql')]);
 parts.push(['friends_abroad', head('025 friends and swaps across countries', 'Same as supabase/migrations/025_friends_abroad.sql.') + mig('025_friends_abroad.sql')]);
 parts.push(['fix_accents', head('026 fix accents scrambled by the clipboard (e.g. Frederic Malle)', 'Same as supabase/migrations/026_fix_accents.sql.') + mig('026_fix_accents.sql')]);
+parts.push(['notifications', head('027 notifications: the bell, and emails about activity you have not seen', 'Same as supabase/migrations/027_notifications.sql.') + mig('027_notifications.sql')]);
+parts.push(['chat', head('028 real-time chat with photos and Seen', 'Same as supabase/migrations/028_chat.sql.') + mig('028_chat.sql')]);
+parts.push(['circles', head('029 pass-arounds and sample giveaways', 'Same as supabase/migrations/029_circles.sql.') + mig('029_circles.sql')]);
+parts.push(['groups', head('030 interest groups', 'Same as supabase/migrations/030_groups.sql.') + mig('030_groups.sql')]);
+parts.push(['social_login_invites', head('031 sign in with Google/Apple, and invite links', 'Same as supabase/migrations/031_social_login_invites.sql.') + mig('031_social_login_invites.sql')]);
+parts.push(['posts_plus', head('032 richer posts: photos, polls, edits, replies, mentions, saved, search', 'Same as supabase/migrations/032_posts_plus.sql.') + mig('032_posts_plus.sql')]);
+parts.push(['tracking_claims', head('033 tracking numbers and didn\'t-arrive claims', 'Same as supabase/migrations/033_tracking_claims.sql.') + mig('033_tracking_claims.sql')]);
 const liveList = parts.map(([name, sql], k) => {
   const file = `${String(k + 1).padStart(2, '0')}_${name}.sql`;
   fs.writeFileSync(path.join(liveDir, file), sql);
