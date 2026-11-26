@@ -601,6 +601,7 @@
         <li data-in><h3>Get matched</h3><p>We find people who have what you want <i>and</i> want what you have.</p></li>
         <li data-in><h3>Swap with confidence</h3><p>Addresses stay private until both of you accept the swap.</p><p>Reviews and a completed-swap count help you trade with confidence.</p></li>
       </ol>
+      ${missionBlock()}
       <div class="w-join" id="join">
         <div>
           <h2>Join the circle</h2>
@@ -705,6 +706,36 @@
   }
   const hasSupplyLinks = () => !!supplyLink("x");
   const AMAZON_DISCLOSURE = "As an Amazon Associate, Swapfume earns from qualifying purchases. It doesn't change the price you pay.";
+  // ---------- Our mission ----------
+  // Shown on the welcome page and as its own page (#/mission), in the founder's own voice.
+  function missionBlock(full) {
+    const ICONS = {
+      try: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9.5" y="2.5" width="5" height="4" rx="1"/><path d="M10 6.5v3.2c-2.2.9-3.5 2.9-3.5 5.3v3.5A3 3 0 0 0 9.5 21.5h5a3 3 0 0 0 3-3V15c0-2.4-1.3-4.4-3.5-5.3V6.5"/><path d="M8.5 15h7"/></svg>`,
+      shelf: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5h18"/><rect x="5" y="11" width="4" height="9.5" rx="1.5"/><rect x="10.5" y="8" width="3.5" height="12.5" rx="1.5"/><rect x="15.5" y="13" width="3.5" height="7.5" rx="1.5"/><path d="M6.2 11V9.2M12.2 8V6M17.2 13v-1.6"/></svg>`,
+      gift: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="9" width="17" height="4" rx="1"/><path d="M5 13v7.5h14V13M12 9v11.5"/><path d="M12 9C10.5 5 6.5 5 7 7.5 7.4 9 12 9 12 9zM12 9c1.5-4 5.5-4 5-1.5C16.6 9 12 9 12 9z"/></svg>`
+    };
+    return html`<section class="mission${full ? " full" : ""}" aria-labelledby="missionTitle">
+      <div class="mission-head" data-in>
+        <span class="eyebrow">Our mission</span>
+        <h2 id="missionTitle">Make the world smell better, <em>without the cost.</em></h2>
+        <p class="lead">I started Swapfume because fragrance should be a joy you discover on your own skin, not something you're talked into buying.</p>
+      </div>
+      <div class="mission-pillars">
+        <article data-in><span class="m-ico">${raw(ICONS.try)}</span><h3>Try it before you fall for it</h3>
+          <p>Too many beautiful, expensive bottles are bought blind, just because an influencer called them a must-have. Here, a few drops from a fellow perfume lover come first. Wear it for a day, live with it for a week, and let your own nose decide.</p></article>
+        <article data-in><span class="m-ico">${raw(ICONS.shelf)}</span><h3>A shelf of favorites, not a warehouse</h3>
+          <p>Happiness doesn't live in hundreds of half-used bottles. A small collection you truly love is worth more than a wall of impulse buys. Swapfume is my quiet stand against perfume consumerism: share what you have, and keep what you cherish.</p></article>
+        <article data-in><span class="m-ico">${raw(ICONS.gift)}</span><h3>Generosity is the whole point</h3>
+          <p>Some of the loveliest discoveries arrive as a tiny vial from someone who simply wanted to share. I'm always more than happy to gift small samples, and I hope Swapfume makes that kind of kindness easy for everyone.</p></article>
+      </div>
+      <p class="mission-sign" data-in>Less buying, more sharing. Let's make the world smell better, together.</p>
+    </section>`;
+  }
+  function pageMission() {
+    setView(html`<div class="narrow" style="max-width:960px;margin:0 auto">${missionBlock(true)}
+      <p style="text-align:center;margin-top:28px"><a class="btn" href="#/">${state.uid ? "Back to Swapfume" : "Join the circle"}</a></p></div>`);
+  }
+
   function pageDecanting() {
     const links = hasSupplyLinks();
     setView(html`<div class="narrow" style="max-width:720px;margin:0 auto">
@@ -1829,7 +1860,7 @@
       <div class="card"><h3>Blocked members</h3>
         ${blocks.length ? html`<ul class="list">${blocks.map((b) => html`<li class="row between"><span>${avatar(b.blocked)} <a href="#/u/${b.blocked_id}">${b.blocked?.display_name || "Former member"}</a></span><button class="btn small ghost" data-unblock="${b.blocked_id}">Unblock</button></li>`)}</ul>`
           : html`<p class="muted small">Nobody. To block someone, open their profile and tap Block — you'll stop seeing each other and can't swap.</p>`}</div>
-      <div class="card"><h3>Help &amp; legal</h3><div class="row"><a class="btn small secondary" href="#/support">Support</a><a class="btn small ghost" href="#/decanting">Decanting guide</a><a class="btn small ghost" href="#/terms">Terms of Use</a><a class="btn small ghost" href="#/privacy">Privacy Policy</a></div></div>
+      <div class="card"><h3>Help &amp; legal</h3><div class="row"><a class="btn small secondary" href="#/support">Support</a><a class="btn small ghost" href="#/mission">Our mission</a><a class="btn small ghost" href="#/decanting">Decanting guide</a><a class="btn small ghost" href="#/terms">Terms of Use</a><a class="btn small ghost" href="#/privacy">Privacy Policy</a></div></div>
       <div class="card"><h3>Sign out</h3><p class="muted small">Sign out of Swapfume on this device. Your account, collection and swaps stay as they are.</p><button class="btn secondary" data-signout>Sign out</button></div>
       <div class="card danger-zone"><h3>Delete account</h3><p class="muted small">Permanently remove your account and your data from Swapfume.</p><button class="btn small danger" id="delAcct">Delete my account…</button></div>
       ${api.mode === "demo" ? html`<div class="card"><h3>Demo tools</h3><p class="muted small">Only in demo mode. Step into another pretend member to answer your proposal, ship, and review.</p>
@@ -2559,6 +2590,7 @@
     [/^\/terms$/, () => pageLegal("terms")],
     [/^\/support$/, () => pageLegal("support")],
     [/^\/decanting$/, pageDecanting],
+    [/^\/mission$/, pageMission],
     [/^\/add-country$/, pageAddCountry],
     [/^\/forgot$/, pageForgot],
     [/^\/confirm-email$/, () => pageResendConfirm(new URLSearchParams((location.hash.split("?")[1]) || ""))],

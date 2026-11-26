@@ -1067,3 +1067,23 @@ h1 .friend-tag { font-size: .8rem; }
 .supply-list li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
 .supply-list a { text-decoration: none; }
 .supply-list a:hover b { text-decoration: underline; }
+
+/* ---------- Our mission (welcome page + #/mission) ---------- */
+.mission { margin: 52px 0 8px; padding: 40px 22px 34px; border-radius: 32px; background: linear-gradient(160deg, var(--accent-soft), var(--teal-soft) 60%, var(--gold-soft)); border: 1px solid var(--line); text-align: center; }
+@media (min-width: 760px) { .mission { padding: 56px 48px 44px; } }
+.mission.full { margin-top: 12px; }
+.mission-head { max-width: 640px; margin: 0 auto 30px; }
+.mission .eyebrow { display: inline-block; font-size: .78rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.mission h2 { font-family: var(--serif); font-size: clamp(1.9rem, 4.6vw, 2.8rem); line-height: 1.1; margin: 10px 0 14px; }
+.mission h2 em { color: var(--accent); }
+.mission .lead { margin: 0; color: var(--ink); opacity: .85; font-size: 1.12rem; }
+.mission-pillars { display: grid; gap: 14px; text-align: left; }
+@media (min-width: 760px) { .mission-pillars { grid-template-columns: repeat(3, 1fr); gap: 18px; } }
+.mission-pillars article { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 22px 20px 20px; box-shadow: var(--shadow); }
+.mission-pillars h3 { font-size: 1.15rem; margin: 12px 0 8px; }
+.mission-pillars p { margin: 0; color: var(--muted); line-height: 1.6; }
+.m-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.m-ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mission-pillars article:nth-child(2) .m-ico { background: var(--teal-soft); color: var(--teal); }
+.mission-pillars article:nth-child(3) .m-ico { background: var(--gold-soft); color: var(--gold-ink); }
+.mission-sign { font-family: var(--serif); font-style: italic; font-size: 1.25rem; margin: 30px auto 0; max-width: 34ch; color: var(--ink); }
